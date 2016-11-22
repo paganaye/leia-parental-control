@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="utf-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
+	<title>Leia's Parental Control - Options Page</title>
+	<style>
+		label {
+			width: 45%;
+			display: inline-block;
+			float: left;
+		}
+		
+		.form-group input {
+			width: 45%
+		}
+		
+		.form-group {
+			padding-bottom: 1em;
+		}
+		
+		.hr {
+			clear: both;
+		}
+	</style>
+</head>
+
+<body>
+	<div class="container" role="main">
+		<form>
+			<!--<div class="form-group">
+				<label for="parentsEmail">Parents' email</label>
+				<input size="2" type="text" id="parentsEmail" value="" />
+			</div>
+			<div class="form-group">
+				<label>&nbsp;</label>
+				<input type="button" id="sendEmailButton" value="Send Parental Report" />
+			</div>
+			<div class="form-group">
+				<label>&nbsp;</label>
+				&nbsp;<span id="sendEmailMessage"></span>
+			</div>-->
+			<p>Leia parental control is now running and requires no further configuration.</p>
+			<p>You can monitor and limit activity on this computer through 
+				<a id="accountPageLink" href="https://leiaparentalcontrol.firebaseapp.com/">the home page</a>.</p>
+			<hr/>
+			<input type="button" id="closeButton" value="Close" />
+			&nbsp;<span id="saveMessage"></span>
+		</form>
+	</div>
+	<script src="../libs/jquery-3.1.1.min.js"></script>
+	<script src="../dist/app/options.js"></script>
+</body>
+
+</html>

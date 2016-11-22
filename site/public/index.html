@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <title>Leia Parental Control</title>
+  <link rel="manifest" href="manifest.json">
+  <link href=css/bootstrap.min.css rel=stylesheet>
+</head>
+
+<body>
+  <div id="message" class="container">
+    <div class="jumbotron">
+      <h1>Welcome to Leia Parental Control</h1>
+      <!--<p>...</p>
+			<p><a class="btn btn-primary btn-lg" href="#" role="button">Learn more</a></p>-->
+    </div>
+    <form>
+      <label></label>
+      <input type="text" name="u" value="f4ag9lqly2ufqq9s22" />
+    </form>
+    <ul id="stream">
+      <li>...</li>
+    </ul>
+  </div>
+  <script src="https://www.gstatic.com/firebasejs/3.5.0/firebase.js"></script>
+  <script>
+  // Initialize Firebase
+if (navigator.serviceWorker) {
+  navigator.serviceWorker.register('background.js').then(function(registration) {
+    console.log('ServiceWorker registration successful with scope:',  registration.scope);
+  }).catch(function(error) {
+    console.log('ServiceWorker registration failed:', error);
+  });
+}
+
+  var config = {
+    apiKey: "AIzaSyC6iHEeS4kQ0eIZ0cNo7jPWCuGS-3gtAy4",
+    authDomain: "leiaparentalcontrol.firebaseapp.com",
+    databaseURL: "https://leiaparentalcontrol.firebaseio.com",
+    storageBucket: "leiaparentalcontrol.appspot.com",
+    messagingSenderId: "737945013874"
+  };
+  firebase.initializeApp(config);
+  var ul = document.getElementById("stream");
+  var userId = "f4ag9lqly2ufqq9s22";
+  //            123456789012345678
+  // 18 characters 0-9aa => base 36
+  // 36^18 = 1.0e28
+
+  var ref = firebase.database().ref("accounts/" + userId + "/today/");
+  ref.limitToLast(1).on('child_added', function(s) {
+
+   var p = document.createElement("p");
+   p.innerText = JSON.stringify(s.val()); //snapshot.toString();
+   //console.log(snapshot.name(), snapshot.val());
+   ul.appendChild(p);
+});
+</script>
+</body>
+
+</html>

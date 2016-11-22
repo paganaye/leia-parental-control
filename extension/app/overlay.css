@@ -1,0 +1,35 @@
+div#LeiaParentalControlOverlay {
+    background-color: blue;
+    color:white;
+    right:5px;
+    bottom:5px;
+    padding: 4px;
+    border: solid 1px white;
+    border-width: 2px;
+    border-radius:4px;
+    font-size: 14px;
+    font-family: Arial, Helvetica, sans-serif;
+    vertical-align: baseline;
+    line-height: initial;
+    z-index: 2147483647;
+    position: fixed;
+    cursor: pointer;
+}
+div#LeiaParentalControlOverlay.center {
+    left:auto;
+    right:auto;
+}
+div#LeiaParentalControlOverlay.right {
+    left:auto;
+    right:5px;
+}
+div#LeiaParentalControlOverlay.left {
+    left:5px;
+    right:auto;
+}
+div#LeiaParentalControlOverlay.fullscreen {
+    left:3px;
+    top:3px;
+    right:3px;
+    bottom:3px;
+}

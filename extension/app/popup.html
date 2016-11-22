@@ -1,0 +1,61 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>Getting Started Extension's Popup</title>
+  <style>
+    body {
+      margin: 0;
+    }
+    
+    ul {
+      font-family: Verdana, sans-serif;
+      font-size: 11pt;
+      background-color: white;
+      width: auto;
+      list-style-type: none;
+      padding: 0;
+      margin: 0;
+      border: 0;
+      display: inline-block;
+      cursor: default;
+    }
+    
+    ul > li {
+      padding: 5px 20px;
+      white-space: nowrap;
+    }
+    
+    ul > li:not(.disabled):hover {
+      background-color: #eee;
+      /*color: white;*/
+    }
+    
+    ul > li.disabled {
+      color: #999;
+    }
+    
+    ul > li.line-through {
+      border-bottom: 1px solid #bbb;
+      margin: -6px 0 6px 0;
+      x-background-color: green;
+    }
+  </style>
+</head>
+
+<body>
+  <ul>
+    <li class="disabled">Leia Parental Control</li>
+    <li class="disabled" id="timeleft">Time left...</li>
+    <li class="disabled line-through"></li>
+    <li id="home">Home page</li>
+    <li class="disabled line-through"></li>
+    <li id="options">Options</li>
+  </ul>
+
+  <script src="../dist/app/popup.js"></script>
+
+</body>
+
+</html>
