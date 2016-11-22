@@ -40,6 +40,7 @@ The extension is written in HTML, CSS and typescript.
 To compile Typescript run the tsc compiler from the extension folder: 
 
         cd extension
+        npm install
         tsc
 
 This is it. By default the tsc compiler will continue compiling in watch mode. 
@@ -56,6 +57,7 @@ The site is written in HTML, CSS and typescript.
 To compile Typescript run the tsc compiler from the site folder: 
 
         cd site
+        npm install
         tsc
 
 This is it. By default the tsc compiler will continue compiling in watch mode. 
@@ -64,7 +66,8 @@ This is it. By default the tsc compiler will continue compiling in watch mode.
 To run a local webserver 
 
         cd site
-        browser-sync start
+        chmod +x serve
+        ./serve
 
 
 
