@@ -1,0 +1,10 @@
+{
+    "compilerOptions": {
+        "target": "es5",
+        "outDir": "dist",
+        "watch": true,
+        "strictNullChecks": true,
+        "noImplicitAny": true,
+        "skipLibCheck": true
+    }
+}
