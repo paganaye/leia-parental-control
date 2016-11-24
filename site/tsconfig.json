@@ -1,10 +1,15 @@
 {
     "compilerOptions": {
-        "target": "es5",
-        "outDir": "dist",
-        "watch": true,
-        "strictNullChecks": true,
+        "outDir": "./dist/",
+        "sourceMap": true,
         "noImplicitAny": true,
-        "skipLibCheck": true
-    }
+        "module": "commonjs",
+        "target": "es5",
+        "jsx": "react",
+        "watch": true
+    },
+    "files": [
+        "./src/components/Hello.tsx",
+        "./src/index.tsx"
+    ]
 }

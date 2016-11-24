@@ -3,13 +3,16 @@
   "version": "1.0.0",
   "description": "Leia Parental Control Extension",
   "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "author": "",
+  "author": "Pascal GANAYE",
   "license": "ISC",
   "repository": {
     "type": "git",
     "url": "https://github.com/paganaye/leia-parental-control/extension"
+  },
+  "scripts": {
+    "tsc": "tsc"
+  },
+  "devDependencies": {
+    "typescript": "^2.0.10"
   }
 }

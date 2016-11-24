@@ -16,20 +16,11 @@ Prior to building LeiaParentalControl you should have installed:
 
 * nodejs
   > [nodejs website](https://nodejs.org/en/)
-
-* typescript compiler
-
-        npm install -g typescript
-  > [typescript website](https://www.typescriptlang.org/)
+  Version 6.9.1 was used when writing this.
 
 ## Optionnal tools
 
-You can also install these tools. This is what I use, this is optionnal, if you're more confortable with something else it is alright with me. 
-
-* browser-sync web server
-
-        npm install -g browser-sync
-  > [browser-sync website](https://www.browsersync.io/)
+This is what I use, this is optionnal, if you're more confortable with something else it is alright with me. 
 
 * visual studio code
 
@@ -41,7 +32,7 @@ To compile Typescript run the tsc compiler from the extension folder:
 
         cd extension
         npm install
-        tsc
+        npm run tsc
 
 This is it. By default the tsc compiler will continue compiling in watch mode. 
 
@@ -58,7 +49,7 @@ To compile Typescript run the tsc compiler from the site folder:
 
         cd site
         npm install
-        tsc
+        npm run serve
 
 This is it. By default the tsc compiler will continue compiling in watch mode. 
 
@@ -73,3 +64,5 @@ To run a local webserver
 
 ## Your job
 Please tell me if I missed something in these instructions. 
+
+

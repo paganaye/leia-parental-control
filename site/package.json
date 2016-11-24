@@ -1,15 +1,31 @@
 {
-  "name": "leia-parent-control-site",
+  "name": "leia-parental-control-site",
   "version": "1.0.0",
-  "description": "Leia Parental Control web site",
+  "description": "Leia Parental Control Site",
   "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "author": "",
+  "author": "Pascal GANAYE",
   "license": "ISC",
   "repository": {
     "type": "git",
     "url": "https://github.com/paganaye/leia-parental-control/site"
+  },
+  "scripts": {
+    "server": "webpack-dev-server"
+  },  
+  "dependencies": {
+    "react-tap-event-plugin": "^2.0.1",
+    "react": "^15.4.1",
+    "jquery": "^3.1.1",
+    "react-dom": "^15.4.1"
+  },
+  "devDependencies": {
+    "@types/react": "^0.14.50",
+    "@types/react-dom": "^0.14.19",
+    "material-ui": "^0.16.4",
+    "source-map-loader": "^0.1.5",
+    "ts-loader": "^1.2.2",
+    "typescript": "^2.0.10",
+    "webpack": "^1.13.3",
+    "webpack-dev-server": "^1.16.2"
   }
 }
