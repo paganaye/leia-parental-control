@@ -1,12 +1,13 @@
 {
-    "compilerOptions": {
-        "outDir": "./dist/",
+    "compilerOptions": { 
+        "outDir": "./dist/", 
         "sourceMap": true,
         "noImplicitAny": true,
         "module": "commonjs",
         "target": "es5",
         "jsx": "react",
-        "watch": true
+        "moduleResolution": "node",
+        "watch": false
     },
     "files": [
         "./src/components/Hello.tsx",

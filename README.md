@@ -60,7 +60,8 @@ To run a local webserver
         chmod +x serve
         ./serve
 
-
+http://localhost:8080/webpack-dev-server/index.html
+http://localhost:8080/index.html
 
 ## Your job
 Please tell me if I missed something in these instructions. 
