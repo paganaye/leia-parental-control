@@ -417,17 +417,29 @@ class MonitoredPage {
 }
 
 class MonitoredUrl {
+    public static list: { [url: string]: MonitoredUrl } = {};
 
-    constructor(url: string, title: string | undefined, now: Date | undefined) {
-        if (!now) now = new Date();
+    public static get(url: string, title?: string, now?: Date): MonitoredUrl {
+        var result = MonitoredUrl.list[url];
+        if (!result) {
+            result = new MonitoredUrl(url);
+            if (!now) now = new Date();
+            result.startDate = DatabaseManager.fullDate(now);
+            result.title = "";
+            MonitoredUrl.list[url] = result;
+        }
+        if (title) result.title = title;
+        return result;
+    }
+
+
+    private constructor(url: string) {
         var realURL = new URL(url);
         this.hostname = realURL.hostname;
         this.path = realURL.pathname;
         this.query = realURL.search;
 
         this.url = url;
-        this.title = title || "";
-        this.startDate = DatabaseManager.fullDate(now);
         this.modified = false; // no need to save a blank url with 0 duration
         this.active = false;
         this.tabIds = [];
@@ -507,29 +519,25 @@ class MonitoredUrl {
                 todayKey.push(this.path + this.query + this.hash);
                 break;
         }
-        console.log("SaveIntoDatabase", this.url);
         app.databaseManager.transaction(todayKey, (currentRecord: SitePage) => {
             var now = new Date();
 
             var increment = 0;
 
-            if (this.active && this.activatedTime) {
-                increment = (now.getTime() - this.activatedTime.getTime()) / 1000;
+            var startTime = this.activatedTime;
+            if (currentRecord && currentRecord.lastSave) {
+                var lastSave = new Date(currentRecord.lastSave);
+                if (!startTime || lastSave.getTime() > startTime.getTime()) startTime = lastSave;
             }
-            else if (!this.active && this.activatedTime && this.deactivatedTime) {
-                increment = (this.deactivatedTime.getTime() - this.activatedTime.getTime()) / 1000;
+            var endTime = now;
+            if (!this.active && this.deactivatedTime) {
+                endTime = this.deactivatedTime;
             }
-
-            if (currentRecord && currentRecord.lastSave && this.activatedTime) {
-                var savedTime = new Date(currentRecord.lastSave);
-
-                var alreadySaved = (savedTime.getTime() - this.activatedTime.getTime()) / 1000;
-                if (alreadySaved > 0) {
-                    increment -= alreadySaved;
-                }
-                //if (increment < 0) debugger;
+            if (endTime && startTime) {
+                var elapsed = endTime.getTime() - startTime.getTime();
+                if (elapsed > 0) increment = elapsed;
+                console.log("Saving", todayKey.join(" "), "Elapsed", (Math.round(elapsed / 100.0)/10)+ "sec");
             }
-
 
             var newRecord: SitePage =
                 {
@@ -614,7 +622,6 @@ interface SitePage {
 }
 
 class TabsMonitor {
-    monitoredUrls: { [url: string]: MonitoredUrl } = {};
 
     lastNow: number;
     windows: { [id: number]: chrome.windows.Window } = {};
@@ -658,17 +665,11 @@ class TabsMonitor {
             for (var tab of tabs) {
                 if (!tab.id || !tab.url) continue;
                 var url = tab.url || "";
-                var monitoredUrl = this.monitoredUrls[url];
+                var monitoredUrl = MonitoredUrl.get(url, tab.title, now);
                 var window = this.windows[tab.windowId];
                 var active = (tab.active && (!window || window.state !== "minimized"))
                     || tab.audible;
                 var tabIsNew = false;
-                if (!monitoredUrl) {
-                    console.log(" * New monitored url", url);
-                    monitoredUrl = new MonitoredUrl(url, tab.title, now);
-                    this.monitoredUrls[url] = monitoredUrl
-                    tabIsNew = true;
-                }
                 if (!tabIds[url]) tabIds[url] = [];
                 tabIds[url].push(tab.id);
 
@@ -683,15 +684,16 @@ class TabsMonitor {
                         chrome.tabs.reload(tab.id);
                 }
             }
-            for (var url in this.monitoredUrls) {
-                var monitoredUrl = this.monitoredUrls[url];
+            for (var url in MonitoredUrl.list) {
+                var monitoredUrl = MonitoredUrl.list[url];
+                if (!monitoredUrl) continue;
                 monitoredUrl.setActive(activeTabs[url] || false);
                 if (tabIds[url]) {
                     monitoredUrl.tabIds = tabIds[url];
                 }
                 else {
                     monitoredUrl.remove();
-                    delete this.monitoredUrls[url];
+                    delete MonitoredUrl.list[url];
                 }
                 monitoredUrl.saveIfModified(nowTime);
             }
@@ -699,7 +701,7 @@ class TabsMonitor {
     }
 
     getLpcMessage(url: string): any {
-        var monitoredUrl = this.monitoredUrls[url];
+        var monitoredUrl = MonitoredUrl.get(url);
         var site = monitoredUrl.getSite();
         var access = (site && site.access) || app.settings.defaultAccess;
         var showPage = app.settings.active && access <= Access.AllowedButTimed;

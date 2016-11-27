@@ -11,12 +11,15 @@
   },
   "scripts": {
     "server": "webpack-dev-server"
-  },  
+  },
   "dependencies": {
-    "react-tap-event-plugin": "^2.0.1",
-    "react": "^15.4.1",
+    "@types/chart.js": "0.0.8",
+    "@types/chartjs": "0.0.29",
+    "chart.js": "^2.4.0",
     "jquery": "^3.1.1",
-    "react-dom": "^15.4.1"
+    "react": "^15.4.1",
+    "react-dom": "^15.4.1",
+    "react-tap-event-plugin": "^2.0.1"
   },
   "devDependencies": {
     "@types/react": "^0.14.50",
