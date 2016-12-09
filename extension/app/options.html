@@ -9,13 +9,12 @@
 	<title>Leia's Parental Control - Options Page</title>
 	<style>
 		label {
-			width: 45%;
+			width: 30%;
 			display: inline-block;
-			float: left;
 		}
 		
 		.form-group input {
-			width: 45%
+			width: 65%
 		}
 		
 		.form-group {
@@ -31,23 +30,33 @@
 <body>
 	<div class="container" role="main">
 		<form>
-			<!--<div class="form-group">
-				<label for="parentsEmail">Parents' email</label>
-				<input size="2" type="text" id="parentsEmail" value="" />
+			<p>Leia parental control record and monitor your child online activity.</p>
+			<p>The child activity will be accessible on the <a id="accountPageLink" href="https://leiaparentalcontrol.firebaseapp.com/">extension's website</a> to the people listed below:</p>
+			<div class="form-group">
+				<label for="email1">email</label>
+				<input size="2" type="text" id="email1" placeholder="email@site.com" />
 			</div>
 			<div class="form-group">
-				<label>&nbsp;</label>
-				<input type="button" id="sendEmailButton" value="Send Parental Report" />
+				<label for="email2">email</label>
+				<input size="2" type="text" id="email2" placeholder="email@site.com" />
 			</div>
 			<div class="form-group">
-				<label>&nbsp;</label>
-				&nbsp;<span id="sendEmailMessage"></span>
+				<label for="email3">email</label>
+				<input size="2" type="text" id="email3" placeholder="email@site.com" />
+			</div>
+			<!--<p>If you own more than one computer you name it here to ease the administration on the website:</p>
+			<div class="form-group">
+				<label for="computerName">Computer name</label>
+				<input size="2" type="text" id="computerName" placeholder="Computer #1" />
 			</div>-->
-			<p>Leia parental control is now running and requires no further configuration.</p>
-			<p>You can monitor and limit activity on this computer through 
-				<a id="accountPageLink" href="https://leiaparentalcontrol.firebaseapp.com/">the home page</a>.</p>
+			<p>This extension works best when each child uses its own account.</p>
+			<!--<div class="form-group">
+				<label for="childName">Child name</label>
+				<input size="2" type="text" id="childName" placeholder="Child #1" />
+			</div>-->
 			<hr/>
-			<input type="button" id="closeButton" value="Close" />
+			<input type="button" id="okButton" value="OK" />
+			<input type="button" id="cancelButton" value="Cancel" />
 			&nbsp;<span id="saveMessage"></span>
 		</form>
 	</div>

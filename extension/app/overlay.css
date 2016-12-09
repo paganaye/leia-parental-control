@@ -1,35 +1,162 @@
+div#LeiaParentalControlBlocker,
+div#LeiaParentalControlOverlay,
+div#LeiaParentalControlOverlay * {
+  all: unset !important;
+}
+
 div#LeiaParentalControlOverlay {
-    background-color: blue;
-    color:white;
-    right:5px;
-    bottom:5px;
-    padding: 4px;
-    border: solid 1px white;
-    border-width: 2px;
-    border-radius:4px;
-    font-size: 14px;
-    font-family: Arial, Helvetica, sans-serif;
-    vertical-align: baseline;
-    line-height: initial;
-    z-index: 2147483647;
-    position: fixed;
-    cursor: pointer;
+  background-color: #eee !important;
+  left: 5px !important;
+  bottom: 5px !important;
+  padding: 4px !important;
+  border: 4px ridge white !important;
+  border-radius: 5px !important;
+  font: 14px Arial, Helvetica, sans-serif !important;
+  z-index: 2147483647 !important;
+  position: fixed !important;
+  width: 220px !important;
+  display: block !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  color: #000 !important;
 }
-div#LeiaParentalControlOverlay.center {
-    left:auto;
-    right:auto;
+
+div#LeiaParentalControlBlocker {
+  display: none !important;
 }
-div#LeiaParentalControlOverlay.right {
-    left:auto;
-    right:5px;
+div#LeiaParentalControlBlocker.LeiaParentalControlFullscreen {
+  background-color: #888 !important;
+  bottom: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  z-index: 2147483647 !important;
+  position: fixed !important;
+  display: block !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
 }
-div#LeiaParentalControlOverlay.left {
-    left:5px;
-    right:auto;
+
+img#LeiaParentalControlIcon {
+  display: block !important;
+  float: left !important;
+  margin-right: 5px !important;
 }
+
+div#LeiaParentalControlLine2
+div#LeiaParentalControlGraph {
+  width: 90px !important;
+  height: 8px !important;
+  margin-top: 2px !important;
+  background-color: #ddd !important;
+  border: solid black 2px !important;
+  display: block !important;
+  float: left !important;
+  margin-right: 10px !important;
+}
+
+div#LeiaParentalControlProgressBar {
+  width: 75% !important;
+  height: 8px !important;
+  background-color: green !important;
+  display: block !important;
+  float: left !important;
+  margin-right: 10px !important;
+}
+
+div#LeiaParentalControlProgressBar.orange {
+  background-color: orange !important;
+}
+
+div#LeiaParentalControlProgressBar.red {
+  background-color: red !important;
+}
+
+div#LeiaParentalControlLine1 {
+  display: block !important;
+}
+
+div#LeiaParentalControlLine2 {
+  margin-top: 4px !important;
+  display: block !important;
+}
+
+div#LeiaParentalControlColumn {
+  display: block !important;
+  float: left !important;
+  width: 183px !important;
+}
+
+div#LeiaParentalControlOverlay.LeiaParentalControlTop {
+  top: 5px !important;
+  bottom: auto !important;
+}
+
+div#LeiaParentalControlOverlay.LeiaParentalControlRight {
+  right: 5px !important;
+  left: auto !important;
+}
+
 div#LeiaParentalControlOverlay.fullscreen {
-    left:3px;
-    top:3px;
-    right:3px;
-    bottom:3px;
+  left: 3px;
+  right: auto;
 }
+
+span#LeiaParentalControlLink {
+  cursor: pointer !important;
+}
+
+span#LeiaParentalControlLink:hover {
+  text-decoration: underline !important;
+  color: navy !important;
+}
+
+div#LeiaParentalControlOverlay
+div.LeiaParentalControlButton {
+  border:solid 2px #aaa !important;
+  color: #aaa !important;
+  background-color: #eee !important;
+  width:14px !important;
+  text-align: center !important;
+  border-radius: 4px !important;
+  float:right !important;
+  margin-left: 3px !important;
+  cursor: pointer !important;
+}
+
+div#LeiaParentalControlOverlay
+div#LeiaParentalControlButtonDown {
+  display: none !important;
+}
+
+div#LeiaParentalControlOverlay.LeiaParentalControlTop
+div#LeiaParentalControlButtonDown {
+  display: block !important;
+}
+div#LeiaParentalControlOverlay.LeiaParentalControlTop
+div#LeiaParentalControlButtonUp {
+  display: none !important;
+}
+
+div#LeiaParentalControlOverlay
+div#LeiaParentalControlButtonLeft {
+  display: none !important;
+}
+
+div#LeiaParentalControlOverlay.LeiaParentalControlRight
+div#LeiaParentalControlButtonLeft {
+  display: block !important;
+}
+div#LeiaParentalControlOverlay.LeiaParentalControlRight
+div#LeiaParentalControlButtonRight {
+  display: none !important;
+}
+
+div#LeiaParentalControlOverlay
+div.LeiaParentalControlButton:hover {
+  background-color: #eee !important;
+  color: navy !important;
+  border-color: navy !important;
+}
+
+

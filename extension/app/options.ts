@@ -3,74 +3,34 @@ var app: BackgroundApplication = (<any>chrome.extension.getBackgroundPage()).app
 // Saves options to chrome.storage
 function saveOptions() {
 
-  // app.options.parentsEmail = parentsEmail.value;
+  var email1 = (<HTMLInputElement>document.getElementById('email1')).value;
+  var email2 = (<HTMLInputElement>document.getElementById('email2')).value;
+  var email3 = (<HTMLInputElement>document.getElementById('email3')).value;
+  var saveMessage = <HTMLSpanElement>document.getElementById("saveMessage");
+  saveMessage.innerText = "Saving...";
+  var emails: string[] = [];
+  if (email1.length > 0) emails.push(email1);
+  if (email2.length > 0) emails.push(email2);
+  if (email3.length > 0) emails.push(email3);
 
-  // console.log("Saving options...", app.options);
+  app.databaseManager.saveEmailsSetting(emails);
+  setTimeout(function () {
 
-  // chrome.storage.sync.set(app.options, function () {
-  //   // Update status to let user know options were saved.
-  //   console.log("Options saved", app.options);
-  //   saveMessage.textContent = 'Options saved.';
-  // });
-  // setTimeout(function () {
-  //   saveMessage.textContent = '';
-  //   window.close();
-  // }, 1000);
+    saveMessage.textContent = '';
+    setTimeout(() => window.close(), 250);
+  }, 1000);
 }
-
-function sendEmail() {
-  // sendEmailMessage.innerText = "<not developped yet>";
-  // setTimeout(function () {
-  //   sendEmailMessage.textContent = '';
-  // }, 1000);
-}
-
-// var accountId: HTMLSpanElement;
-// var parentsEmail: HTMLInputElement;
-// var sendEmailButton: HTMLInputElement;
-// var sendEmailMessage: HTMLSpanElement;
-// var saveButton: HTMLInputElement;
-// var saveMessage: HTMLSpanElement;
-var closeButton: HTMLInputElement;
-var accountPageLink: HTMLAnchorElement;
-
-function closeOptions() {
-
-  // app.options.parentsEmail = parentsEmail.value;
-
-  // console.log("Saving options...", app.options);
-
-  // chrome.storage.sync.set(app.options, function () {
-  //   // Update status to let user know options were saved.
-  //   console.log("Options saved", app.options);
-  //   saveMessage.textContent = 'Options saved.';
-  // });
-  // setTimeout(function () {
-  //   saveMessage.textContent = '';
-  // }, 1000);
-  window.close();
-}
-
 
 // Main tabs
 document.addEventListener("DOMContentLoaded", function (event) {
-  var options = app.options || {};
-  var closeButton = <HTMLInputElement>document.getElementById('closeButton');
-  var accountPageLink = <HTMLAnchorElement>document.getElementById('accountPageLink');
+  var okButton = <HTMLInputElement>document.getElementById('okButton');
+  var cancelButton = <HTMLInputElement>document.getElementById('cancelButton');
 
-  // accountId = <HTMLSpanElement>document.getElementById('accountId');
-  // parentsEmail = <HTMLInputElement>document.getElementById('parentsEmail');
-  // sendEmailButton = <HTMLInputElement>document.getElementById('sendEmailButton');
-  // sendEmailMessage = <HTMLSpanElement>document.getElementById('sendEmailMessage');
-  // saveButton = <HTMLInputElement>document.getElementById('saveButton');
-  // saveMessage = <HTMLSpanElement>document.getElementById('saveMessage');
+  okButton.addEventListener('click', saveOptions);
+  cancelButton.addEventListener('click', () => window.close());
 
-  // accountId.innerText = options.accountId;
-  // parentsEmail.value = options.parentsEmail;
-  // sendEmailButton.addEventListener('click', sendEmail)
-  // saveButton.addEventListener('click', saveOptions);
-  accountPageLink.href = "https://leiaparentalcontrol.firebaseapp.com/?account=" + app.options.accountId;
-
-  closeButton.addEventListener('click', closeOptions);
-
+  var emails = app.databaseManager.getEmailsSetting();
+  (<HTMLInputElement>document.getElementById('email1')).value = emails[0] || "";
+  (<HTMLInputElement>document.getElementById('email2')).value = emails[1] || "";
+  (<HTMLInputElement>document.getElementById('email3')).value = emails[2] || "";
 });

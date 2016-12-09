@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, user-scalable=no">
+    <title>Hello FireBase</title>
+</head>
+
+<body>
+    <div id="example"></div>
+    <!-- Dependencies -->
+    <!-- Main -->
+
+    <script src="https://www.gstatic.com/firebasejs/3.6.1/firebase.js"></script>
+    <script>
+        // Initialize Firebase
+        var config = {
+            apiKey: "AIzaSyC6iHEeS4kQ0eIZ0cNo7jPWCuGS-3gtAy4",
+            authDomain: "leiaparentalcontrol.firebaseapp.com",
+            databaseURL: "https://leiaparentalcontrol.firebaseio.com",
+            storageBucket: "leiaparentalcontrol.appspot.com",
+            messagingSenderId: "737945013874"
+        };
+        firebase.initializeApp(config);
+        console.log("firebase:", firebase);
+    </script>
+    <div>Counter: <span id="counter"></span></div>
+    <div><input type="button" id="button1" value="Increment"></div>
+    <script src="trans.js"></script>
+</body>
+
+</html>

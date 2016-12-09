@@ -12,6 +12,7 @@
     },
     "files": [
         "./src/components/Hello.tsx",
-        "./src/index.tsx"
+        "./src/index.tsx",
+        "./src/firebase.d.ts"
     ]
 }

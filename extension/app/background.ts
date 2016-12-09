@@ -1,60 +1,207 @@
+/**
+ * This page records the time spent on a page, on a site and on the internet.
+ * 
+ * A page is considered active either if the tab is active or the music is playing.
+ * When the computer is idle. I got to stop the counting but haven't done it yet.
+ * 
+ * When two pages are active together, the time spent on the site and on the internet
+ * will be smaller than the sum of its part.
+ * This is why:
+ *    - there is nop point adding individual counters together 
+ *    - we record more than just one counter
+ *
+ * Example:
+ *  
+ * Time spent on the internet
+ *          - Duration : 125.0 s
+ *
+ * Time spent in newTab
+ *          - Duration : 5.0 s
+ * 
+ * Time spent on youtube
+ *          - Duration : 111.0 s
+ *
+ * Time spent in youtube /watch?v=2S1fYLHABy4
+ *          - Duration : 110 s
+ *
+ * Time spent in youtube /watch?v=NwXLC9xY-xQ
+ *          - Duration : 110 s
+ * 
+ */
+//var firebase: FirebaseClient;
 
-//TODO: <a href="https://icons8.com/web-app/5770/Sad">Sad icon</a> by Icons8
-//============================================================================
-class BackgroundApplication {
-    tabsMonitor: TabsMonitor;
-    iconManager: IconManager;
-    optionManager: OptionManager;
-    databaseManager: DatabaseManager;
-    siteManager: SiteManager;
-    startupTime: string;
-
-    counting: boolean;
-    db: FirebaseClient;
-    dbUid: string;
-    options: AppOptions;
-    defaultSettings: AccountSettings;
-    settings: AccountSettings;
-
-    run() {
-
-        app.defaultSettings = {
-            active: true,
-            dailyMaximum: 60,
-            defaultAccess: Access.AllowedButTimed,
-            defaultInstantReporting: false,
-            defaultGranularity: HistoricGranularity.IndividualPage
-        };
-
-        app.settings = Object.create(app.defaultSettings);
-
-        this.startupTime = new Date().toString();
-        this.optionManager = new OptionManager();
-        this.optionManager.init(
-            () => {
-                this.siteManager = new SiteManager();
-                this.tabsMonitor = new TabsMonitor();
-                this.iconManager = new IconManager();
-                this.databaseManager = new DatabaseManager();
-
-                this.databaseManager.init(() => {
-                    this.tabsMonitor.init();
-                });
-            });
-    }
+const enum Access {
+    Unknown = 0,
+    AllowedAndFree = 1,
+    AllowedButTimed = 2,
+    Forbidden = 3,
+    InstantClose = 4
 }
 
-interface AccountSettings {
+const enum HistoricGranularity {
+    Domain = 1,
+    IndividualPage = 2,
+    QueryString = 3,
+    HashValues = 4
+}
+
+interface AppSettings {
     defaultAccess: Access;
     defaultInstantReporting: boolean;
     dailyMaximum: number;
     active: boolean;
     defaultGranularity: HistoricGranularity;
+    emails: string;
+    globalExceptions: { [key: string]: SiteException }
 }
 
 
-interface DaySetting {
-    maximumToday: number;
+type SitesSettings = { [hostname: string]: SiteSetting };
+type DatabaseUpdates = { [key: string]: any };
+
+interface AggregateTimings {
+    timed: number;
+    activated?: string | null;
+    error?: string;
+}
+
+interface DayHistorics {
+    timings: AggregateTimings;
+    sites: { [site: string]: SiteHistorics }
+}
+
+interface SiteHistorics {
+    timings: AggregateTimings;
+    pages: { [path: string]: PageHistorics };
+}
+
+interface PageHistorics {
+    title: string;
+    timings: AggregateTimings;
+}
+
+interface ParsedUrl {
+    protocol: string;
+    host: string;
+    hostname: string;
+    port: string;
+    pathname: string;
+    search: string;
+    hash: string;
+}
+
+interface AppOptions {
+    version: number;
+    accountId: string;
+    authKey: string;
+}
+
+
+interface SiteException {
+    description: string;
+    pathRegex: string;
+    titleRegex: string;
+    contentRegex: string
+    access: Access;
+    instantReporting: boolean;
+}
+
+interface History {
+    lastDate: string;
+    daily: number[];
+    monthly: number[];
+}
+
+interface SiteSetting {
+    hostname: string;
+    description: string;
+    historicGranularity: HistoricGranularity;
+    access: Access;
+    instantReporting: boolean;
+    dailyMaximum?: number;
+    exceptions: { [key: string]: SiteException }
+}
+
+const enum LpcAction {
+    NewTab,
+    HelloResponse,
+    Activated,
+    Deactivated,
+    SettingsChanged,
+    MinuteTimer
+}
+
+interface LpcMessage {
+    sender: "LPCBackground";
+    access: Access;
+    message: string;
+    todaysTotal: number;
+    todaysMax: number;
+    sitesTotal: number;
+    sitesMax: number;
+}
+
+class BackgroundApplication {
+    tabsMonitor: TabsMonitor;
+    iconManager: IconManager;
+    optionManager: OptionManager;
+    databaseManager: DatabaseManager;
+    sitesSettings: SitesSettings = {};
+
+    startupTime: string;
+
+    counting: boolean;
+    options: AppOptions;
+    defaultSettings: AppSettings;
+    settings: AppSettings;
+    todaysDataSnap: firebase.DataSnapshot;
+    initComplete: boolean = false;
+
+    run() {
+        this.startupTime = new Date().toString();
+
+        app.defaultSettings = {
+            active: true,
+            dailyMaximum: 2700,
+            defaultAccess: Access.AllowedButTimed,
+            defaultInstantReporting: false,
+            defaultGranularity: HistoricGranularity.IndividualPage,
+            emails: "",
+            globalExceptions: {}
+        };
+
+        app.settings = deepMerge(app.defaultSettings);
+
+        this.tabsMonitor = new TabsMonitor();
+        this.iconManager = new IconManager();
+        this.databaseManager = new DatabaseManager();
+        this.optionManager = new OptionManager();
+
+        this.optionManager.init();
+
+    }
+}
+
+function deepMerge<T>(object1: T, object2?: any, overwrite?: boolean): T {
+    var recursiveMerge = (destination: any, merge: any): any => {
+        for (var prop in merge) {
+            if (!merge.hasOwnProperty(prop)) continue;
+            if (destination === undefined) destination = {};
+            if (destination.hasOwnProperty(prop) && !overwrite) continue;
+            var mergeValue = merge[prop];
+            destination[prop] = (typeof mergeValue === "object")
+                ? recursiveMerge(destination[prop], mergeValue)
+                : mergeValue;
+        }
+        return destination;
+    }
+    var result = recursiveMerge({}, object1 || {});
+    if (object2) result = recursiveMerge(result, object2);
+    return result as T;
+}
+
+function OneDec(n: number) {
+    return Math.round(n * 10) / 10;
 }
 
 class IconManager {
@@ -80,273 +227,10 @@ class IconManager {
     }
 }
 
-class DatabaseManager {
-    afterLoginCallback: () => void;
-    afterLoginCalled = false;
-    todaysTotal = 0;
-    todayData: TodayData;
-    // Initialize Firebase
-    config = {
-        apiKey: "AIzaSyC6iHEeS4kQ0eIZ0cNo7jPWCuGS-3gtAy4",
-        authDomain: "leiaparentalcontrol.firebaseapp.com",
-        databaseURL: "https://leiaparentalcontrol.firebaseio.com",
-        storageBucket: "",
-        messagingSenderId: "737945013874"
-    };
-
-    rand6(): string {
-        return Math.floor(Math.random() * Math.pow(36, 6)).toString(36);
-    }
-
-    rand18(): string {
-        return this.rand6() + this.rand6() + this.rand6();
-    }
-
-    init(callback: () => void) {
-        this.afterLoginCallback = callback; "Signed in firebase"
-        firebase.initializeApp(this.config);
-        // Listening for auth state changes.
-
-        firebase.auth().onAuthStateChanged((user: any) => {
-            if (user) {
-                app.dbUid = user.uid;
-                console.log("Signed in firebase", user);
-                this.afterSignin();
-            } else {
-                if (app.options.accountId == null || app.options.accountId.length == 0) {
-                    app.options.accountId = this.rand18();
-                    app.options.authKey = this.rand18();
-                    app.optionManager.save();
-                    this.signUp();
-                }
-                else {
-                    this.signIn();
-                }
-            }
-        });
-    }
-
-
-    signUp() {
-        var email = "tmp" + app.options.accountId + "@ganaye.com";
-        var password = app.options.authKey;
-        firebase.auth().createUserWithEmailAndPassword(email, password).catch((err: any) => {
-            // Handle Errors here.
-            if (err) {
-                alert("An error occured while signing up.")
-            }
-            else {
-                console.log("userCreated");
-            }
-        });
-    }
-
-    signIn() {
-        var email = "tmp" + app.options.accountId + "@ganaye.com";
-        var password = app.options.authKey;
-        firebase.auth().signInWithEmailAndPassword(email, password).catch((err: any) => {
-            // Handle Errors here.
-            if (err) {
-                if (err.code == "auth/user-not-found") {
-                    // this is strange but perhaps the databae was cleared
-                    this.signUp();
-                } else if (err.code == "auth/user-disabled") {
-                    alert("Account disabled.");
-                }
-                else {
-                    alert("Unexpected login error: " + err);
-                }
-            }
-            else {
-                console.log("User signed in", email);
-            }
-        });
-    }
-
-    afterSignin() {
-
-        app.tabsMonitor.checkAllTabs({ refreshTab: true });
-
-        this.get<AccountSettings>(["accounts", app.options.accountId, "settings"],
-            (newSettings) => {
-                if (!newSettings) newSettings = <AccountSettings>{};
-
-                if (typeof newSettings.defaultAccess === "undefined") newSettings.defaultAccess = app.defaultSettings.defaultAccess;
-                if (typeof newSettings.defaultInstantReporting === "undefined") newSettings.defaultInstantReporting = app.defaultSettings.defaultInstantReporting;
-                if (typeof newSettings.active === "undefined") newSettings.active = app.defaultSettings.active;
-                if (typeof newSettings.dailyMaximum === "undefined") newSettings.dailyMaximum = app.defaultSettings.dailyMaximum;
-                if (typeof newSettings.defaultGranularity === "undefined") newSettings.defaultGranularity = app.defaultSettings.defaultGranularity;
-                console.log("New account settings", newSettings);
-                app.settings = newSettings;
-                this.gotAccountSettings = true;
-                this.gotSettingsTodayDataAndSites();
-            });
-        this.once<TodayData>(["accounts", app.options.accountId, "today"],
-            (dayData) => {
-                this.todayData = dayData;
-                this.gotTodayData = true;
-                this.gotSettingsTodayDataAndSites();
-            });
-        this.get<{ [hostname: string]: Site }>(["accounts", app.options.accountId, "sites"],
-            (newSites) => {
-                app.siteManager.sites = newSites || {};
-                this.gotSites = true;
-                this.gotSettingsTodayDataAndSites();
-            });
-    }
-
-    gotAccountSettings: boolean;
-    gotTodayData: boolean;
-    gotSites: boolean;
-
-    gotSettingsTodayDataAndSites() {
-        if (!this.gotAccountSettings
-            || !this.gotTodayData
-            || !this.gotSites) return;
-
-        this.recalcTotal();
-        if (this.afterLoginCallback && !this.afterLoginCalled) {
-            this.afterLoginCalled = true;
-            this.afterLoginCallback();
-        }
-        app.tabsMonitor.checkAllTabs({ settingsChanged: true });
-
-    }
-
-    recalcTotal(): void {
-        var today = DatabaseManager.shortDate(new Date());
-        this.todaysTotal = 0;
-        for (var hostname in this.todayData) {
-            var dailyRecord = this.todayData[hostname];
-            var realHostName = dailyRecord.hostname;
-            /*
-            var page = dailyRecord.pages[];
-            if (dailyRecord.startDate < today) {
-                // put this in history
-                var perSiteKey = ["accounts", app.options.accountId, "history", dailyRecord.hostname];
-                app.databaseManager.transaction(perSiteKey, (history: History) => {
-                    if (history == null || history.lastDate <= dailyRecord.startDate) {
-                        history = app.databaseManager.increment(history, dailyRecord.duration, dailyRecord.startDate);
-                    }
-                    app.databaseManager.set(["accounts", app.options.accountId, "today", dailyRecord.hostname], null);
-                    return history;
-                });
-            } else {
-                var site = app.siteManager.getSite(realHostName)
-                var access = (site && site.access)
-                    ? site.access : app.settings.defaultAccess;
-                if (access == Access.AllowedButTimed) {
-                    this.todaysTotal += dailyRecord.duration;
-                }
-            }
-            */
-        }
-
-    }
-
-    static escapeChars: { [key: string]: string } = { ".": "\u2024", "$": "\uFF04", "[": "\u27E6", "]": "\u27E7", "#": "\uFF03", "/": "\u2044" };
-    static unescapeChars: { [key: string]: string } = { "\u2024": ".", "\uFF04": "$", "\u27E6": "[", "\u27E7": "]", "\uFF03": "#", "\u2044": "/" };
-
-    public static escapeKey(src: string) {
-        var length = src.length;
-        var result: string[] = [];
-        for (var i = 0; i < length; i++) {
-            var srcChar: string = src.charAt(i);
-            var keyChar: string = DatabaseManager.escapeChars[srcChar];
-            result.push(keyChar || srcChar);
-        }
-        return result.join("");
-    }
-
-    public static unescapeKey(src: string) {
-        var length = src.length;
-        var result: string[] = [];
-        for (var i = 0; i < length; i++) {
-            var keyChar: string = src.charAt(i);
-            var srcChar: string = DatabaseManager.unescapeChars[keyChar];
-            result.push(srcChar || keyChar);
-        }
-        return result.join("");
-    }
-
-    public getRef(path: string | string[]): any {
-        if (Array.isArray(path)) {
-            path = path.map((s) => DatabaseManager.escapeKey(s)).join("/");
-        }
-        else path = DatabaseManager.escapeKey(path);
-        return firebase.database().ref(path);
-    }
-
-
-    public get<T>(path: string | string[], onFunction: (value: T) => void): void {
-        this.getRef(path).on("value", (snap: any) => {
-            onFunction(<T>snap.val());
-        });
-    }
-
-    public once<T>(path: string | string[], onFunction: (value: T) => void): void {
-        this.getRef(path).once("value").then((snap: any) => {
-            onFunction(<T>snap.val());
-        });
-    }
-
-
-    public set(path: string | string[], value: any) {
-        this.getRef(path).set(value);
-    }
-
-    public push(path: string | string[], value: any): string {
-        var ref = this.getRef(path);
-        var key = ref.push(value).getKey();
-        return key;
-    }
-
-    public transaction<T>(path: string | string[], updateData: (data: T) => T, onSuccess?: () => void, onError?: () => void) {
-        var ref = this.getRef(path);
-        var data = ref.transaction((data: any, x: any, y: any) => {
-            data = updateData(data);
-            return data;
-        }, (error: any, committed: boolean, snapshot: any) => {
-            var path = ref.path.toString();
-            var val: any = val ? snapshot.val() : null;
-            if (error) {
-                console.log("Transaction failed abnormally.", error, "data:", path, val);
-                if (onError) onError();
-            } else if (!committed) {
-                console.log("Transaction aborted: No data provided.", path, val);
-                if (onError) onError();
-            } else {
-                console.log("Data saved", path, val);
-                if (onSuccess) onSuccess();
-            }
-        });
-
-    }
-
-
+class HistoryManager {
     nbMonthMax = 100;
     nbDayMax = 100;
     LOCAL_MILLENIUM_DAY = new Date(2000, 0, 1).getTime();
-
-    static fullDate(d: Date): string {
-        return d.getFullYear() + "-"
-            + DatabaseManager.twoDigits(d.getMonth() + 1) + "-"
-            + DatabaseManager.twoDigits(d.getDate()) + " "
-            + DatabaseManager.twoDigits(d.getHours()) + ":"
-            + DatabaseManager.twoDigits(d.getMinutes()) + ":"
-            + DatabaseManager.twoDigits(d.getSeconds());
-    };
-
-    static shortDate(d: Date): string {
-        return d.getFullYear() + "-"
-            + DatabaseManager.twoDigits(d.getMonth() + 1) + "-"
-            + DatabaseManager.twoDigits(d.getDate());
-    }
-
-    static twoDigits(n: number): string {
-        return n >= 10 ? n.toString() : "0" + n;
-    }
-
 
     public increment(history: History, increment: number, newDateString: string): History {
         var result = <History>{
@@ -394,39 +278,427 @@ class DatabaseManager {
         return array;
     }
 
-}
+    setSettings(emails: string[]) {
 
-// class CachedSite {
-//     constructor(readonly hostname: string) {
-
-//     }
-//     site: Site;
-//     listeners: ((site: Site) => void)[] = [];
-// }
-class SiteManager {
-    //cache: { [key: string]: CachedSite } = {};
-    sites: { [hostname: string]: Site } = {};
-
-    getSite(hostname: string): Site {
-        return this.sites[DatabaseManager.escapeKey(hostname)] || {};
     }
 }
 
-class MonitoredPage {
+class DatabaseManager {
+
+    dbUid: string;
+
+
+    firebaseApp: firebase.FirebaseApplication;
+    database: firebase.Database;
+    userRef: firebase.DatabaseReference;
+    settingsRef: firebase.DatabaseReference;
+    userSitesRef: firebase.DatabaseReference;
+    todaysRef: firebase.DatabaseReference;
+
+
+
+    config = {
+        apiKey: "AIzaSyC6iHEeS4kQ0eIZ0cNo7jPWCuGS-3gtAy4",
+        authDomain: "leiaparentalcontrol.firebaseapp.com",
+        databaseURL: "https://leiaparentalcontrol.firebaseio.com",
+        storageBucket: "",
+        messagingSenderId: "737945013874"
+    };
+
+    rand6(): string {
+        return Math.floor(Math.random() * Math.pow(36, 6)).toString(36);
+    }
+
+    rand18(): string {
+        return this.rand6() + this.rand6() + this.rand6();
+    }
+
+    init() {
+        firebase.database.enableLogging(true);
+        this.firebaseApp = firebase.initializeApp(this.config);
+        this.database = this.firebaseApp.database();
+
+        this.firebaseApp.auth().onAuthStateChanged((user: any) => {
+            if (user) {
+                this.dbUid = user.uid;
+                console.log("Signed in firebase", user);
+                this.afterSignin();
+            } else {
+                if (app.options.accountId == null || app.options.accountId.length == 0) {
+                    app.options.accountId = this.rand18();
+                    app.options.authKey = this.rand18();
+                    app.optionManager.save();
+                    this.signUp();
+                }
+                else {
+                    this.signIn();
+                }
+            }
+        });
+    }
+
+    saveEmailsSetting(emailArray: string[]) {
+        var emails: { [key: string]: number } = {};
+        var cpt = 0;
+        emailArray.forEach(s => emails[DatabaseManager.escapeKey(s)] = cpt++);
+
+
+        //this.set(this.emailRef, emails);
+    }
+
+    getEmailsSetting(): string[] {
+        var result: string[] = [];
+        // for (var x in app.settings.emails) {
+        //     result[app.settings.emails[x]] = DatabaseManager.unescapeKey(x);
+        // }
+        return result;
+    }
+
+
+    signUp() {
+        var email = "tmp" + app.options.accountId + "@ganaye.com";
+        var password = app.options.authKey;
+
+        this.firebaseApp.auth().createUserWithEmailAndPassword(email, password).catch((err: any) => {
+            // Handle Errors here.
+            if (err) {
+                alert("An error occured while signing up.")
+            }
+            else {
+                console.log("userCreated");
+            }
+        });
+    }
+
+    signIn() {
+        var email = "tmp" + app.options.accountId + "@ganaye.com";
+        var password = app.options.authKey;
+        this.firebaseApp.auth().signInWithEmailAndPassword(email, password).catch((err: any) => {
+            // Handle Errors here.
+            if (err) {
+                if (err.code == "auth/user-not-found") {
+                    // this is strange but perhaps the databae was cleared
+                    this.signUp();
+                } else if (err.code == "auth/user-disabled") {
+                    alert("Account disabled.");
+                }
+                else {
+                    alert("Unexpected login error: " + err);
+                }
+            }
+            else {
+                console.log("User signed in", email);
+            }
+        });
+    }
+
+    tabsMonitorInitDone: boolean;
+
+    afterSignin() {
+        if (!this.tabsMonitorInitDone) {
+            this.tabsMonitorInitDone = true;
+            app.tabsMonitor.init();
+        }
+        var gotAccountSettings = false;
+        var gotSites = false;
+        var gotTodayData = false;
+
+        this.userRef = this.database.ref("users").child(this.dbUid);
+
+        var checkTabs = () => {
+            if (!gotAccountSettings
+                || !gotTodayData
+                || !gotSites) return;
+            app.initComplete = true;
+
+            app.tabsMonitor.checkAllTabs(CheckAllTabsReason.SettingsChanged);
+        }
+
+        var onSettingsChanged = (snap: firebase.DataSnapshot) => {
+            var newSettings = snap.val();
+            app.settings = deepMerge<AppSettings>(newSettings, app.defaultSettings);
+            console.log("New account settings", app.settings);
+            gotAccountSettings = true;
+            checkTabs();
+        };
+
+        if (this.settingsRef) this.settingsRef.off("value", onSettingsChanged)
+        this.settingsRef = this.userRef.child("settings");
+        this.settingsRef.on("value", onSettingsChanged);
+
+        var onUserSitesChanged = (snap: firebase.DataSnapshot) => {
+            app.sitesSettings = snap.val() || {};
+            gotSites = true;
+            checkTabs();
+        };
+
+        if (this.userSitesRef) this.settingsRef.off("value", onUserSitesChanged)
+        this.userSitesRef = this.userRef.child("sites");
+        this.userSitesRef.on("value", onUserSitesChanged);
+
+        var onDayHistoricsChanged = (snap: firebase.DataSnapshot) => {
+            app.todaysDataSnap = snap;
+            gotTodayData = true;
+            checkTabs();
+        }
+
+        if (this.userSitesRef) this.settingsRef.off("value", onUserSitesChanged)
+        this.todaysRef = this.userRef.child("today");
+        this.todaysRef.on("value", onDayHistoricsChanged);
+
+    }
+
+
+    private static escapeChars: { [key: string]: string } = {
+        ".": "\u2024",
+        "$": "\uFF04",
+        "[": "\u27E6",
+        "]": "\u27E7",
+        "#": "\uFF03",
+        "/": "\u2044"
+    };
+
+    private static reverseObject(src: any): any {
+        return Object.keys(src).reduce((out: any, val: any) => {
+            out[src[val]] = val;
+            return out
+        }, {});
+    }
+
+    private static unescapeChars = DatabaseManager.reverseObject(DatabaseManager.escapeChars);
+
+    public static escapeKey(src: string) {
+        var length = src.length;
+        var result: string[] = [];
+        for (var i = 0; i < length; i++) {
+            var srcChar: string = src.charAt(i);
+            var keyChar: string = DatabaseManager.escapeChars[srcChar];
+            result.push(keyChar || srcChar);
+        }
+        return result.join("");
+    }
+
+    public static unescapeKey(src: string) {
+        var length = src.length;
+        var result: string[] = [];
+        for (var i = 0; i < length; i++) {
+            var keyChar: string = src.charAt(i);
+            var srcChar: string = DatabaseManager.unescapeChars[keyChar];
+            result.push(srcChar || keyChar);
+        }
+        return result.join("");
+    }
+
+    static getKey(parts: any[]) {
+        var result = parts.map((p) => {
+            switch (typeof (p)) {
+                case "object":
+                    if (p instanceof Date) return DatabaseManager.fullDate(p);
+                    else if (p == null) return "null"
+                    else return p.toString();
+                // no break;                    
+                default:
+                    return DatabaseManager.escapeKey(p.toString());
+            }
+        }).join("/");
+        return result;
+    }
+
+    static fullDate(d: Date): string {
+        return d.getFullYear() + "-"
+            + DatabaseManager.twoDigits(d.getMonth() + 1) + "-"
+            + DatabaseManager.twoDigits(d.getDate()) + " "
+            + DatabaseManager.twoDigits(d.getHours()) + ":"
+            + DatabaseManager.twoDigits(d.getMinutes()) + ":"
+            + DatabaseManager.twoDigits(d.getSeconds());
+    };
+
+    static shortDate(d: Date): string {
+        return d.getFullYear() + "-"
+            + DatabaseManager.twoDigits(d.getMonth() + 1) + "-"
+            + DatabaseManager.twoDigits(d.getDate());
+    }
+
+    static twoDigits(n: number): string {
+        return n >= 10 ? n.toString() : "0" + n;
+    }
+
+
 
 }
 
-class MonitoredUrl {
-    public static list: { [url: string]: MonitoredUrl } = {};
+abstract class TimedItem {
+    private _active: boolean;
+    private _activatedTime: Date;
+    private _groups: TimedGroup[] = [];
+    private _initialized: boolean;
+    private _timings: AggregateTimings;
+    private _timingsPath: string;
 
-    public static get(url: string, title?: string, now?: Date): MonitoredUrl {
+    constructor() {
+
+    }
+
+    isActive(): boolean {
+        return this._active;
+    }
+
+    
+    public start(updates: DatabaseUpdates): void {
+        if (!this._active) {
+            if (!this._initialized) {
+                this.onInitializeGroups(updates);
+                var timingsPath = DatabaseManager.getKey(this.getTimingPath());
+                this._timings = app.todaysDataSnap.child(timingsPath).val() || {};
+                this._timingsPath = DatabaseManager.getKey(this.getTimingPath());
+                this._initialized = true;
+            }
+            this._active = true;
+            this._activatedTime = new Date();
+            this._timings.activated = DatabaseManager.fullDate(this._activatedTime);
+            updates[this._timingsPath] = this._timings;
+            this._groups.forEach(p => p.memberStarted(this, updates));
+        }
+    }
+
+    public stop(updates: DatabaseUpdates): void {        
+        if (!this._active) return;
+        this._active = false;
+        if (!this._activatedTime) return;
+        var duration = (new Date().getTime() - this._activatedTime.getTime()) / 1000;
+
+        delete this._timings.activated;
+        this._timings.timed = OneDec((this._timings.timed || 0) + duration);
+        updates[this._timingsPath] = this._timings;
+        this._groups.forEach(p => p.memberStopped(this, updates));
+    }
+
+    public getValue(): number {
+        if (!this._initialized) return 0;
+        var result = this._timings.timed || 0;
+        if (this._activatedTime) {
+            var d = (new Date().getTime() - this._activatedTime.getTime()) / 1000;
+            result += d;
+        }
+        return Math.round(result);
+    }
+
+    abstract getTimingPath(): any[];
+    abstract onInitializeGroups(updates: DatabaseUpdates): void;
+
+
+    protected joinGroup(group: TimedGroup, updates: DatabaseUpdates) {
+        if (this._groups.indexOf(group) >= 0) return;
+        this._groups.push(group);
+        if (this._active) group.memberStarted(this, updates);
+    }
+
+    protected leaveGroup(group: TimedGroup, updates: DatabaseUpdates) {
+        if (this._active) group.memberStopped(this, updates)
+        this._groups = this._groups.filter(x => x !== group);
+    }
+}
+
+class TimedGroup extends TimedItem {
+    private _nbMembers: number = 0;
+    private name: string;
+
+    constructor(private timingPath: string[]) {
+        super();
+    }
+
+    public memberStarted(child: TimedItem, updates: DatabaseUpdates) {
+        this._nbMembers += 1;
+        if (this._nbMembers > 0) this.start(updates);
+    }
+
+    public memberStopped(child: TimedItem, updates: DatabaseUpdates) {
+        this._nbMembers -= 1;
+        if (this._nbMembers == 0) this.stop(updates);
+    }
+
+    getTimingPath(): any[] {
+        return this.timingPath;
+    }
+
+    onInitializeGroups(updates: DatabaseUpdates): void {
+    }
+
+}
+
+class MonitoredSite {
+    private hostnameKey: string
+    public static list: { [hostname: string]: MonitoredSite } = {};
+    public static todayTimed: TimedGroup = new TimedGroup(["timings", "todayTimed"]);
+    public static todayUntimed: TimedGroup = new TimedGroup(["timings", "todayUntimed"]);
+    public static todayAudio: TimedGroup = new TimedGroup(["timings", "todayAudio"]);
+    private timeGroup: TimedGroup;
+
+    public static get(hostname: string, title?: string): MonitoredSite {
+        var result = MonitoredSite.list[hostname];
+        if (!result) {
+            MonitoredSite.list[hostname] = result = new MonitoredSite(hostname);
+        }
+        return result;
+    }
+
+    private constructor(private hostname: string) {
+        this.hostnameKey = DatabaseManager.escapeKey(hostname);
+        this.timeGroup = new TimedGroup(["sites", hostname, "timings"])
+    }
+
+    public getTiming(): TimedGroup {
+        return this.timeGroup;
+    }
+
+    public get historicGranularity(): HistoricGranularity {
+        var siteSettings = app.sitesSettings[this.hostnameKey] || {};
+        return siteSettings.historicGranularity || app.defaultSettings.defaultGranularity;
+    }
+
+    public get access(): Access {
+        var siteSettings = app.sitesSettings[this.hostnameKey] || {};
+        return siteSettings.access || app.defaultSettings.defaultAccess;
+    }
+
+    public get description(): string {
+        var siteSettings = app.sitesSettings[this.hostnameKey] || {};
+        return siteSettings.description || "";
+    }
+
+    onInitializeGroups(updates: DatabaseUpdates): void {
+    }
+
+    getSitesTotal(): number {
+        return this.timeGroup.getValue();
+    }
+    getSitesMax(): number {
+        return 3600;
+    }
+}
+
+interface TabIdAndMonitoredUrl {
+    tabId: number;
+    monitoredUrl: MonitoredUrl
+}
+
+
+
+class MonitoredUrl extends TimedItem {
+    public static list: { [url: string]: MonitoredUrl } = {};
+    private site: MonitoredSite;
+    private hostname: string;
+    private url: string;
+    private title: string;
+    private path: string;
+    private query: string;
+    private hash: string
+    public tabIds: number[];
+
+    public static get(url: string, title?: string): MonitoredUrl {
         var result = MonitoredUrl.list[url];
         if (!result) {
-            result = new MonitoredUrl(url);
-            if (!now) now = new Date();
-            result.startDate = DatabaseManager.fullDate(now);
-            result.title = "";
-            MonitoredUrl.list[url] = result;
+            MonitoredUrl.list[url] = result = new MonitoredUrl(url);
         }
         if (title) result.title = title;
         return result;
@@ -434,238 +706,164 @@ class MonitoredUrl {
 
 
     private constructor(url: string) {
+        super();
         var realURL = new URL(url);
-        this.hostname = realURL.hostname;
+        this.hostname = realURL.hostname.replace(/^www\./, '');
         this.path = realURL.pathname;
         this.query = realURL.search;
 
         this.url = url;
-        this.modified = false; // no need to save a blank url with 0 duration
-        this.active = false;
         this.tabIds = [];
+        this.site = MonitoredSite.get(this.hostname);
     }
 
-
-    private active: boolean;
-    private modified: boolean;
-    private hostname: string;
-    private url: string;
-    private title: string;
-    private startDate: string;
-    private startTime: string;
-    private path: string;
-    private query: string;
-    private hash: string
-    private activatedTime: Date | null;
-    private deactivatedTime: Date | null;
-    private lastSaveTime: Date;
-    public tabIds: number[];
-
-    isActive(): boolean {
-        return this.active;
+    getAccess(): Access {
+        return this.site.access;
     }
 
-    setActive(newActive: boolean) {
-        if (newActive != this.active) {
-            this.active = newActive;
-            this.modified = true;
-            if (newActive) this.activatedTime = new Date();
-            else this.deactivatedTime = new Date();
+    onInitializeGroups(updates: DatabaseUpdates): void {
+        this.joinGroup(this.site.getTiming(), updates);
+        if (this.getAccess() === Access.AllowedAndFree) {
+            this.joinGroup(MonitoredSite.todayUntimed, updates);
+        }
+        else {
+            this.joinGroup(MonitoredSite.todayTimed, updates);
         }
     }
 
-    public getSite(): Site {
-        return app.siteManager.getSite(this.hostname);
+    getTimingPath(): any[] {
+        return [
+            "sites", this.hostname,
+            "pages", this.getPagePath(),
+            "timings"];
     }
 
     setTitle(newTitle: string) {
         if (newTitle != this.title) {
             this.title = newTitle;
-            this.modified = true;
         }
     }
 
-    remove() {
-        this.setActive(false);
-    }
+    // private getHostRef(): firebase.DatabaseReference {
+    //     var hostRef = app.databaseManager.todaysRef &&
+    //         app.databaseManager.todaysRef
+    //             .child("sites")
+    //             .child(DatabaseManager.escapeKey(this.hostname));
+    //     return hostRef;
+    // }
 
-    static MinimalTimeSave = 15000; // 15 seconds
+    private getPagePath(): string {
+        var path: string;
 
-    saveIfModified(nowTime: number) {
-        if (this.modified
-            || this.active && ((new Date().getTime() - this.lastSaveTime.getTime()) >= MonitoredUrl.MinimalTimeSave)) {
-            this.save();
-            this.modified = false;
-        }
-    }
-
-    private save() {
-        // var isTiming = false;
-        // var parts = TabsMonitor.parseURL(monitoredUrl.url as string);
-        // monitoredUrl.lastSave = nowTime;
-        this.lastSaveTime = new Date();
-
-        var todayKey = ["accounts", app.options.accountId, "today", this.hostname];
-        switch (this.getSite().historicGranularity || app.settings.defaultGranularity) {
-            case HistoricGranularity.Domain:
-                break;
+        switch (this.site.historicGranularity || app.settings.defaultGranularity) {
             case HistoricGranularity.IndividualPage:
-                todayKey.push(this.path);
+                path = this.path;
                 break;
             case HistoricGranularity.QueryString:
-                todayKey.push(this.path + this.query);
+                path = this.path + this.query;
                 break;
             case HistoricGranularity.HashValues:
-                todayKey.push(this.path + this.query + this.hash);
+                path = this.path + this.query + this.hash;
+                break;
+            case HistoricGranularity.Domain:
+            default:
+                path = "/";
                 break;
         }
-        app.databaseManager.transaction(todayKey, (currentRecord: SitePage) => {
-            var now = new Date();
-
-            var increment = 0;
-
-            var startTime = this.activatedTime;
-            if (currentRecord && currentRecord.lastSave) {
-                var lastSave = new Date(currentRecord.lastSave);
-                if (!startTime || lastSave.getTime() > startTime.getTime()) startTime = lastSave;
-            }
-            var endTime = now;
-            if (!this.active && this.deactivatedTime) {
-                endTime = this.deactivatedTime;
-            }
-            if (endTime && startTime) {
-                var elapsed = endTime.getTime() - startTime.getTime();
-                if (elapsed > 0) increment = elapsed;
-                console.log("Saving", todayKey.join(" "), "Elapsed", (Math.round(elapsed / 100.0)/10)+ "sec");
-            }
-
-            var newRecord: SitePage =
-                {
-                    // we store the real hostname despite it is also in the address
-                    // because it is encoded in the address.
-                    startDate: this.startDate,
-                    title: this.title,
-                    duration: (currentRecord ? currentRecord.duration : 0) + increment,
-                    active: this.active,
-                    lastSave: DatabaseManager.fullDate(now)
-                }
-
-            return newRecord;
-        });
+        return path;
     }
 
-}
+    // private getVisitsRef(): firebase.DatabaseReference {
+    //     var path = this.getPagePath();
+    //     var visitsRef = this.getHostRef()
+    //         .child("pages")
+    //         .child(DatabaseManager.escapeKey(path))
+    //         .child("visits");
+    //     return visitsRef;
+    // }
 
-interface ParsedUrl {
-    protocol: string;
-    host: string;
-    hostname: string;
-    port: string;
-    pathname: string;
-    search: string;
-    hash: string;
-}
+    getLpcMessage(action: LpcAction): LpcMessage {
+        var access = app.settings.active ? this.site.access : Access.InstantClose;
 
-enum Access {
-    Unknown = 0,
-    AllowedAndFree = 1,
-    AllowedButTimed = 2,
-    Forbidden = 3
-}
+        var todaysTotal = MonitoredSite.todayTimed.getValue(); //app.databaseManager.todaysTotal
+        var todaysMax = app.settings.dailyMaximum; //app.databaseManager.todaysTotal
+        var sitesTotal = this.site.getSitesTotal(); //todaysSite ? todaysSite.total :
+        var sitesMax = this.site.getSitesMax();
 
-enum HistoricGranularity {
-    Domain = 1,
-    IndividualPage = 2,
-    QueryString = 3,
-    HashValues = 4
-}
+        var message: LpcMessage = {
+            sender: "LPCBackground",
+            message: this.site.description || "Leia Parental Control",
+            access: access,
+            todaysTotal: todaysTotal,
+            todaysMax: todaysMax,
+            sitesTotal: sitesTotal,
+            sitesMax: sitesMax
 
-interface SiteException {
-    queryRegex: string;
-    description: string;
-    access: Access;
-    instantReporting: boolean;
-}
+        };
+        return message;
+    }
 
-
-class Site {
-    hostname: string;
-    description: string;
-    historicGranularity: HistoricGranularity;
-    access: Access;
-    instantReporting: boolean;
-
-    exceptions: SiteException[]
-}
-
-
-interface History {
-    lastDate: string;
-    daily: number[];
-    monthly: number[];
-}
-
-type TodayData = { [site: string]: SiteDailyRecord };
-type WeekData = { [date: string]: TodayData };
-
-interface SiteDailyRecord {
-    hostname: string,
-    pages: { [key: string]: SitePage }
-}
-
-interface SitePage {
-    active: boolean
-    startDate: string,
-    title: string,
-    duration: number,
-    lastSave: string;
-}
-
-class TabsMonitor {
-
-    lastNow: number;
-    windows: { [id: number]: chrome.windows.Window } = {};
-
-    public static parseURL(url: string): ParsedUrl {
-        var parser = document.createElement("a");
-        try {
-            parser.href = url;
-        } catch (error) {
-
-        }
-        // Convert query string to object
-        return {
-            protocol: parser.protocol,
-            host: parser.host,
-            hostname: parser.hostname,
-            port: parser.port,
-            pathname: parser.pathname,
-            search: parser.search,
-            hash: parser.hash
+    sendLpcMessages(action: LpcAction) {
+        if (!this.tabIds) return;
+        for (var id of this.tabIds) {
+            this.sendLpcMessage(id, action);
         };
     }
 
+    sendLpcMessage(tabId: number, action: LpcAction): void {
+        var message = this.getLpcMessage(action);
+        if (message.access == Access.InstantClose) {
+            chrome.tabs.remove(tabId);
+        }
+        else chrome.tabs.sendMessage(tabId, message);
+    }
+
+    public dispose(updates: DatabaseUpdates): void {
+        if (this.isActive()) {
+            debugger; // not normal
+            this.stop(updates);
+        }
+        delete MonitoredUrl.list[this.url];
+    }
+
+}
+
+enum CheckAllTabsReason {
+    SettingsChanged,
+    TabChanged,
+    MinuteTimer
+}
+
+class TabsMonitor {
+    windows: { [id: number]: chrome.windows.Window } = {};
+    activeTabsIds: TabIdAndMonitoredUrl[] = [];
+
     checkWindowsAndTabs() {
-        chrome.windows.getAll((windows) => {
-            for (var w of windows) {
-                this.windows[w.id] = w;
-            }
-            this.checkAllTabs();
+        setTimeout(() => {
+            // this is a bit fiddly, we are trying to detect minimized and closed windows here
+            chrome.windows.getAll((windows) => {
+                for (var w of windows) {
+                    this.windows[w.id] = w;
+                }
+                this.checkAllTabs(CheckAllTabsReason.TabChanged);
+            });
         });
     }
 
-    checkAllTabs(options?: any): void {
-        if (!options) options = {};
+    checkAllTabs(reason: CheckAllTabsReason): void {
+        if (!app.initComplete) return;
+
         chrome.tabs.query({}, (tabs) => {
             var now = new Date();
             var nowTime: number = now.getTime();
             var tabIds: { [url: string]: number[] } = {};
             var activeTabs: { [url: string]: boolean } = {};
+            var newActiveTabsIds: TabIdAndMonitoredUrl[] = [];
 
             for (var tab of tabs) {
                 if (!tab.id || !tab.url) continue;
                 var url = tab.url || "";
-                var monitoredUrl = MonitoredUrl.get(url, tab.title, now);
+                var monitoredUrl = MonitoredUrl.get(url, tab.title);
                 var window = this.windows[tab.windowId];
                 var active = (tab.active && (!window || window.state !== "minimized"))
                     || tab.audible;
@@ -676,64 +874,61 @@ class TabsMonitor {
                 if (active) activeTabs[url] = true;
                 if (tab.title) monitoredUrl.setTitle(tab.title);
 
-                if (options.settingsChanged || tabIsNew) {
-                    this.sendLpcMessage(url, tab.id);
-                }
-                if (options.refreshTab) {
-                    if (tab.url.substr(0, 9) !== "chrome://")
-                        chrome.tabs.reload(tab.id);
+                if (tab.active) {
+                    newActiveTabsIds.push({ tabId: tab.id, monitoredUrl: monitoredUrl });
+                    if (reason == CheckAllTabsReason.SettingsChanged) {
+                        monitoredUrl.sendLpcMessage(tab.id, LpcAction.SettingsChanged);
+                    }
                 }
             }
+            this.activeTabsIds = newActiveTabsIds;
+            // It generate quite a bit of database noise to deactivate and reactivate a site
+            // It is better to activate new tabs and the deactivate old ones.
+            var updates: DatabaseUpdates = {};
+            // So: first activate
             for (var url in MonitoredUrl.list) {
                 var monitoredUrl = MonitoredUrl.list[url];
-                if (!monitoredUrl) continue;
-                monitoredUrl.setActive(activeTabs[url] || false);
-                if (tabIds[url]) {
+                if (monitoredUrl) {
                     monitoredUrl.tabIds = tabIds[url];
+                    if (activeTabs[url] && !monitoredUrl.isActive()) {
+                        monitoredUrl.start(updates);
+                        monitoredUrl.sendLpcMessages(LpcAction.Activated);
+                    }
                 }
-                else {
-                    monitoredUrl.remove();
-                    delete MonitoredUrl.list[url];
-                }
-                monitoredUrl.saveIfModified(nowTime);
             }
+            // And then deactivate
+            for (var url in MonitoredUrl.list) {
+                var monitoredUrl = MonitoredUrl.list[url];
+                if (monitoredUrl && !activeTabs[url]) {
+                    if (monitoredUrl.isActive()) {
+                        monitoredUrl.stop(updates);
+                        monitoredUrl.sendLpcMessages(LpcAction.Deactivated);
+                    }
+                    if (!tabIds[url]) {
+                        monitoredUrl.dispose(updates);
+                    }
+                }
+            }
+            if (Object.keys(updates).length > 0) {
+                console.log("Posting", updates);
+                app.databaseManager.todaysRef.update(updates);
+            }
+
         });
-    }
-
-    getLpcMessage(url: string): any {
-        var monitoredUrl = MonitoredUrl.get(url);
-        var site = monitoredUrl.getSite();
-        var access = (site && site.access) || app.settings.defaultAccess;
-        var showPage = app.settings.active && access <= Access.AllowedButTimed;
-
-        var message = {
-            sender: "LPCBackground",
-            showPage: showPage,
-            message: (site && site.description) || "Leia Parental Control"
-        };
-        return message;
-    }
-
-    sendLpcMessage(url: string, tabId: number) {
-        var message = this.getLpcMessage(url);
-        chrome.tabs.sendMessage(tabId, message, function (response) {
-            console.log("Start action sent");
-        });
-
     }
 
     init() {
         chrome.tabs.onCreated.addListener((tab) => {
-            this.checkAllTabs();
+            this.checkAllTabs(CheckAllTabsReason.TabChanged);
         });
         chrome.tabs.onActivated.addListener((tabinfo) => {
-            this.checkAllTabs();
+            this.checkAllTabs(CheckAllTabsReason.TabChanged);
         });
         chrome.tabs.onUpdated.addListener((tabId) => {
-            this.checkAllTabs();
+            this.checkAllTabs(CheckAllTabsReason.TabChanged);
         });
         chrome.tabs.onRemoved.addListener((tabId) => {
-            this.checkAllTabs();
+            this.checkAllTabs(CheckAllTabsReason.TabChanged);
         });
 
         chrome.windows.onCreated.addListener((window) => {
@@ -744,54 +939,46 @@ class TabsMonitor {
             this.checkWindowsAndTabs();
         });
 
-        chrome.windows.onRemoved.addListener((windowId) => {
-            delete this.windows[windowId];
-            this.checkWindowsAndTabs();
-        });
-        this.setClock();
-
-        this.checkWindowsAndTabs();
+        this.minuteClock();
+        setInterval(() => this.secondClock(), 1000);
     }
 
-    clockFrequency = 60; // in minutes (max 60)
+    minuteCounter = 0;
 
-    setClock() {
+    minuteClock() {
+        this.minuteCounter++;
+        this.checkAllTabs(CheckAllTabsReason.MinuteTimer);
+
         var now = new Date();
-        var nextTime = new Date(now);
-        var newMinutes = Math.floor(now.getMinutes() / this.clockFrequency) * this.clockFrequency + this.clockFrequency;
-        nextTime.setMinutes(newMinutes, 0, 0);
-        var timeToNextTime = nextTime.getTime() - now.getTime();
-
+        var secondsToNextMinute = (60 - now.getSeconds());
         setTimeout(() => {
-            this.checkAllTabs();
-            this.setClock();
-        }, timeToNextTime);
+            this.minuteClock();
+        }, secondsToNextMinute * 1000);
     }
-}
 
-interface AppOptions {
-    version: number;
-    accountId: string;
-    parentsEmail: string;
-    authKey: string;
-}
+    secondClock() {
+        for (var x of app.tabsMonitor.activeTabsIds) {
+            x.monitoredUrl.sendLpcMessage(x.tabId, LpcAction.MinuteTimer);
+        }
+    }
 
+}
 
 class OptionManager {
 
-    init(callback: () => void): void {
+    init(): void {
 
         app.options = {
             version: 1,
             accountId: "",
-            parentsEmail: "",
             authKey: "",
         }
 
         chrome.storage.sync.get(app.options, (newOptions: AppOptions) => {
             app.options = newOptions;
             console.log("Extensions options loaded", app.options);
-            callback();
+            // now that options are there we have the username so we can load the database
+            app.databaseManager.init();
         });
     }
 
@@ -804,13 +991,16 @@ class OptionManager {
 
 }
 
-var firebase: any;
 var app = new BackgroundApplication();
+var debug = false;
 
-if (typeof ($) !== "undefined") {
-    $(() => {
+if (debug) {
+    setTimeout(() => {
+        debugger;
         app.run();
-    });
+    }, 10000)
+} else {
+    $(() => app.run());
 }
 
 chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
@@ -818,8 +1008,11 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
     switch (message.message) {
         case "HELLO":
             if (sendResponse) {
-                sendResponse(app.tabsMonitor.getLpcMessage(message.url));
+                var monitoredUrl = MonitoredUrl.get(message.url);
+                sendResponse(monitoredUrl.getLpcMessage(LpcAction.HelloResponse));
             }
             break;
     }
 });
+//TODO: <a href="https://icons8.com/web-app/5770/Sad">Sad icon</a> by Icons8
+//============================================================================

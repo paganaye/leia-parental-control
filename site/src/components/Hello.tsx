@@ -12,18 +12,16 @@ export class Hello extends React.Component<HelloProps, {}> {
         this.getFromDatabase();
     }
 
-    rawData = {};
+    rawData: any = {};
 
     getFromDatabase() {
         var database = (window as any).firebase.database();
-        var pascal = "o7jogpfea55z82x05u";
-        var leia = "f4ag9lqly2ufqq9s22";
-        var user = pascal;
-        var xx = database.ref("/accounts/" + user + "/today").on('value', (snap: any) => {
-            setTimeout(() => {
-                this.rawData = snap.val();
-                this.renderD3();
-            })
+        // var pascal = "ewTfFegyOOcUkcmfsylXaRyzDYi1";
+        var leia = "5G58vqqWTsMcRJQ44sgnJjzV75E2";
+        var user = leia;
+        database.ref("/users/" + user + "/today").on('value', (snap: any) => {
+            this.rawData = snap.val();
+            this.renderD3();
         });
     }
 
@@ -31,22 +29,33 @@ export class Hello extends React.Component<HelloProps, {}> {
         var canvas = document.getElementById('chart1') as HTMLCanvasElement;
         var ctx = canvas.getContext('2d');
         var data: any[] = [];
-        var backgroundColors: any[] = [];
+        var backgroundColors: any[] = [
+            '#5DA5DA',//  (blue)
+            '#60BD68',//  (green)
+            '#DECF3F',//  (yellow)
+            '#FAA43A',//  (orange)
+            '#F15854',//  (red)
+            '#F17CB0',//  (pink)
+            '#B276B2',//  (purple)
+            '#B2912F',//  (brown)
+            '#4D4D4D' // (gray)
+        ];
+
         var labels: string[] = [];
-        for (var hostName in this.rawData) {
-            var site = (this.rawData as any)[hostName];
+        for (var hostName in this.rawData.sites) {
+            var site = (this.rawData.sites as any)[hostName];
             console.log(hostName, site);
             var total = 0;
-            for (var pageName in site) {
+            /*for (var pageName in site) {
                 var pageInfo = site[pageName];
-                total += pageInfo.duration;
-            }
-            data.push(Math.round(total / 1000 / 6) / 10);
+                total += pageInfo.timings.timed;
+            }*/
+            data.push(site.timings.timed);
             labels.push(hostName);
         }
-        if (labels.length > 10) {
+        if (labels.length > 9) {
             var other = 0;
-            while (labels.length > 10) {
+            while (labels.length >= 9) {
                 var min = Math.min.apply(Math, data);
                 var indexOfSmallest = data.indexOf(min);
                 var minLabel = labels[indexOfSmallest];

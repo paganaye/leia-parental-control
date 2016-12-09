@@ -1,0 +1,17 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "users": {
+    	"$uid": {
+        ".read": "$uid === auth.uid || (auth.token.email_verified == true && data.child('settings').child('emails').child(auth.token.email.replace('.','․')).exists())",
+        ".write": "$uid === auth.uid" 			                 
+      }
+        
+    },
+    "sandbox": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}

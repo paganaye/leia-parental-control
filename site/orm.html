@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, user-scalable=no">
+    <title>Hello FireBase</title>
+    <style>
+        label {
+            min-width: 5em;
+            display: inline-block
+        }
+        
+        div {
+            margin-bottom: 0.5em
+        }
+        
+        input {
+            width: 15em;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div><label>Path:</label><input id="path" value="a" /> <button id="btnRead">Read</button></div>
+    <div><label>Value:</label><input id="value" value='1' /></div>
+    <div><label></label><button id="btnSave">Save</button> <span id="message"></span></div>
+    <div><label>Full ORM</label>
+        <pre id="output">...</pre>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/3.6.1/firebase.js"></script>
+    <script>
+    
+// Initialize Firebase
+var config = {
+  apiKey: "AIzaSyC6iHEeS4kQ0eIZ0cNo7jPWCuGS-3gtAy4",
+  authDomain: "leiaparentalcontrol.firebaseapp.com",
+  databaseURL: "https://leiaparentalcontrol.firebaseio.com",
+  storageBucket: "leiaparentalcontrol.appspot.com",
+  messagingSenderId: "737945013874"
+};
+
+
+console.log("firebase:", firebase);
+var path = document.getElementById("path");
+var value = document.getElementById("value");
+var btnRead = document.getElementById("btnRead");
+var btnSave = document.getElementById("btnSave");
+var message = document.getElementById("message");
+var output = document.getElementById("output");
+
+firebase.initializeApp(config);
+var database = firebase.database();
+var ormRef = database.ref("/sandbox/orm");
+
+function OrmProxy(ref) {
+  return new Proxy(ref, {
+    get: function(target, name) {
+      console.log("**proxy.get", name);
+      switch (name) {
+        case "toJSON":
+          return () => ref.val();
+        case "toString":
+          return () => JSON.stringify(ref.val());
+        case "isOrmProxy":
+          return () => true;
+      }
+      var newRef = ref.child(name);
+      var val = newRef.val();
+      
+      return (typeof val === "object" ?
+        OrmProxy(newRef) :
+        val);
+    },
+    set: function(target, name, value) {
+      if (value.isOrmProxy) value = value.toJSON();
+      target.ref.child(name).set(value)
+    },
+    apply: function(receiver, args) {
+      console.log("**proxy.apply", receiver, args);
+      return 'I am the proxy';
+    },
+    has: function(target, prop) {
+      console.log("**proxy.has", target, prop);
+      alert('has ' + prop);
+    },
+
+    enumerate: function(oTarget, sKey) {
+      console.log("**enumerate", target, prop);
+    },
+    getPrototypeOf: function() {
+      console.log("**getPrototypeOf");
+      return Array.prototype;
+    },
+    ownKeys: function(oTarget, sKey) {
+      console.log("**ownkeys", target, prop);
+    }
+  });
+}
+var db = OrmProxy(ormRef);
+ormRef.on('value', (sn) => {
+  db = OrmProxy(sn);
+  var ormValue = sn.val();
+  output.innerText = JSON.stringify(ormValue, null, 3);
+});
+
+btnRead.addEventListener("click", () => {
+  message.innerText = "";
+  try {
+    var target = db;
+    var parts = path.value.split('.');
+    for (var i = 0; i <= parts.length - 1; i++) {
+      var propertyName = parts[i];
+      if (!target[propertyName]) target[propertyName] = {};
+      target = target[propertyName];
+    }
+    var targetValue = target;
+    value.value = (typeof targetValue === "string") ?
+      targetValue :
+      JSON.stringify(targetValue);
+  } catch (e) {
+    message.innerText = e.toString();
+  }
+});
+btnSave.addEventListener("click", () => {
+  message.innerText = "";
+  debugger;
+  try {
+    var val = JSON.parse(value.value);
+  } catch (e) {
+    val = value.value;
+  }
+
+  try {
+    var target = db;
+    var parts = path.value.split('.');
+    for (var i = 0; i < parts.length - 1; i++) {
+      var propertyName = parts[i];
+      if (!target[propertyName]) target[propertyName] = {};
+      target = target[propertyName];
+    }
+    if (val === "") val = null;
+    target[parts[parts.length - 1]] = val;
+  } catch (e) {
+    message.innerText = e.toString();
+  }
+});
+    </script>
+</body>
+
+</html>

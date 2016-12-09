@@ -14,5 +14,11 @@
   },
   "devDependencies": {
     "typescript": "^2.0.10"
+  },
+  "dependencies": {
+    "@types/chrome": "0.0.35",
+    "@types/jasmine": "^2.5.38",
+    "@types/jquery": "^2.0.34",
+    "@types/es6-shim": "^0.31.32"
   }
 }

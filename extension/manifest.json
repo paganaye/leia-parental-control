@@ -1,11 +1,14 @@
 {
 	"name": "Leia Parental Control",
 	"description": "A chrome extension for parents to monitor and limit their kids time on the internet.",
-	"version": "1.3.2",
+	"version": "1.3.6",
 	"manifest_version": 2,
 	"options_ui": {
 		"page": "app/options.html",
 		"chrome_style": true
+	},
+	"icons": {
+		"128": "images/Parent Guardian-96.png"
 	},
 	"browser_action": {
 		"default_icon": "images/Parent Guardian-96.png",
@@ -20,7 +23,8 @@
 		"tabs",
 		"background",
 		"storage",
-		"identity"
+		"identity",
+		"idle"
 	],
 	"content_scripts": [
 		{

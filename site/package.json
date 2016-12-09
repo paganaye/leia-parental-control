@@ -10,11 +10,14 @@
     "url": "https://github.com/paganaye/leia-parental-control/site"
   },
   "scripts": {
-    "server": "webpack-dev-server"
+    "start": "webpack-dev-server"
   },
   "dependencies": {
+    "@types/react": "^0.14.50",
+    "@types/react-dom": "^0.14.19",
     "@types/chart.js": "0.0.8",
     "@types/chartjs": "0.0.29",
+    "@types/jquery": "^2.0.34",
     "chart.js": "^2.4.0",
     "jquery": "^3.1.1",
     "react": "^15.4.1",
@@ -22,8 +25,8 @@
     "react-tap-event-plugin": "^2.0.1"
   },
   "devDependencies": {
-    "@types/react": "^0.14.50",
-    "@types/react-dom": "^0.14.19",
+    "copy-webpack-plugin": "^4.0.1",
+    "file-loader": "^0.9.0",
     "material-ui": "^0.16.4",
     "source-map-loader": "^0.1.5",
     "ts-loader": "^1.2.2",
