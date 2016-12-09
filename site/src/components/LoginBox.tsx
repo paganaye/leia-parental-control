@@ -35,17 +35,17 @@ export class LoginBox extends React.Component<LoginProps, {}> {
         });
     }
     googleSignIn(e: React.MouseEvent<HTMLInputElement>): void {
-        var provider = new this.firebase.auth.GoogleAuthProvider();
+        var provider = new (this.firebase.auth as any).GoogleAuthProvider();
         this.finishLogin(provider);
     }
 
     facebookSignIn(e: React.MouseEvent<HTMLInputElement>): void {
-        var provider = new this.firebase.auth.FacebookAuthProvider();
+        var provider = new (this.firebase.auth as any).FacebookAuthProvider();
         this.finishLogin(provider);
     }
 
     finishLogin(provider: any) {
-        this.firebase.auth().signInWithPopup(provider).then((result: any) => {
+        (this.firebase.auth() as any).signInWithPopup(provider).then((result: any) => {
             // This gives you a Google Access Token. You can use it to access the Google API.
             var token = result.credential.accessToken;
             // The signed-in user info.

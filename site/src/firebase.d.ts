@@ -926,21 +926,21 @@ declare namespace firebase {
          *
          * @type {Promise<void>}
          */
-        signOut(): Promise<void>;
+        signOut(): any;
 
         /**
          * Sign in via email/password.
          *
          * @type {Promise<User>}
          */
-        signInWithEmailAndPassword(email: string, password:string): Promise<User>;
+        signInWithEmailAndPassword(email: string, password:string): any;
 
         /**
          * Creates a user via email/password.
          *
          * @type {Promise<User>}
          */
-        createUserWithEmailAndPassword(email: string, password:string): Promise<User>;
+        createUserWithEmailAndPassword(email: string, password:string): any;
 
         /**
          * (description)
