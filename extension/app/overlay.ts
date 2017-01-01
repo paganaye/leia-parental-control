@@ -6,8 +6,8 @@ class LpcOverlay {
     injected: HTMLDivElement;
     message: HTMLSpanElement;
     //timeLeft: HTMLSpanElement;
-    //todaysTotal: HTMLSpanElement;
-    //todaysSiteTotal: HTMLSpanElement;
+    //todayTotal: HTMLSpanElement;
+    //todaySiteTotal: HTMLSpanElement;
     pausedVideo: HTMLVideoElement | null;
     blocker: HTMLDivElement;
     progressBarElement: HTMLDivElement; // = document.getElementById("LeiaParentalControlProgressBar");
@@ -131,8 +131,7 @@ class LpcOverlay {
                     this.setFullScreen(false);
                     break;
                 case Access.AllowedButTimed:
-                    //this.setFullScreen(message.timeLeft <= 0);
-
+                    this.setFullScreen(false);
                     break;
                 case Access.Forbidden:
                 default:
@@ -140,17 +139,17 @@ class LpcOverlay {
                     break;
             }
             
-            var todaysLeft = message.todaysMax - message.todaysTotal;
-            var sitesLeft = message.sitesMax - message.sitesTotal;
-            if (todaysLeft < sitesLeft) {
-                var percent = message.todaysTotal / message.todaysMax;
+            var todayLeft = message.todayMax - message.todayTotal;
+            var siteLeft = message.siteMax - message.siteTotal;
+            if (todayLeft < siteLeft) {
+                var percent = message.todayTotal / message.todayMax;
             } else {
-                var percent = message.sitesTotal / message.sitesMax;
+                var percent = message.siteTotal / message.siteMax;
             }
             this.progressBarElement.style.cssText = 'width:' + (percent * 100) + '% !important';
             this.progressBarElement.classList.toggle("orange", percent > 0.9 && percent <= 1);
             this.progressBarElement.classList.toggle("red", percent > 1);
-            var timeLeft = LpcOverlay.friendlyTime(Math.min(todaysLeft, sitesLeft));
+            var timeLeft = LpcOverlay.friendlyTime(Math.min(todayLeft, siteLeft));
             this.timeLeftElement.innerText = timeLeft.toString();
         }
     }

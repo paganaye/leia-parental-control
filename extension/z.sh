@@ -4,3 +4,12 @@
 
 rm "../LeiaParentalControl-Extension.zip"
 zip "../LeiaParentalControl-Extension.zip" "manifest.json" "app/background.html" "app/options.html" "app/overlay.css"  "app/popup.html" "images/Parent Guardian-96.png" "dist/app/background.js" "dist/app/options.js" "dist/app/overlay.js" "dist/app/popup.js" "libs/firebase-3.6.1.min.js" "libs/jquery-3.1.1.min.js" 
+
+# usage:
+# update manifest
+# ctrl+ù
+# ./z.sh
+# https://chrome.google.com/webstore/developer/dashboard
+# edit 1.3
+# upload
+# publish changes

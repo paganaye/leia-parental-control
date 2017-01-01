@@ -112,25 +112,25 @@ var LpcOverlay = (function () {
                     this.setFullScreen(false);
                     break;
                 case 2 /* AllowedButTimed */:
-                    //this.setFullScreen(message.timeLeft <= 0);
+                    this.setFullScreen(false);
                     break;
                 case 3 /* Forbidden */:
                 default:
                     this.setFullScreen(true);
                     break;
             }
-            var todaysLeft = message.todaysMax - message.todaysTotal;
-            var sitesLeft = message.sitesMax - message.sitesTotal;
-            if (todaysLeft < sitesLeft) {
-                var percent = message.todaysTotal / message.todaysMax;
+            var todayLeft = message.todayMax - message.todayTotal;
+            var siteLeft = message.siteMax - message.siteTotal;
+            if (todayLeft < siteLeft) {
+                var percent = message.todayTotal / message.todayMax;
             }
             else {
-                var percent = message.sitesTotal / message.sitesMax;
+                var percent = message.siteTotal / message.siteMax;
             }
             this.progressBarElement.style.cssText = 'width:' + (percent * 100) + '% !important';
             this.progressBarElement.classList.toggle("orange", percent > 0.9 && percent <= 1);
             this.progressBarElement.classList.toggle("red", percent > 1);
-            var timeLeft = LpcOverlay.friendlyTime(Math.min(todaysLeft, sitesLeft));
+            var timeLeft = LpcOverlay.friendlyTime(Math.min(todayLeft, siteLeft));
             this.timeLeftElement.innerText = timeLeft.toString();
         }
     };

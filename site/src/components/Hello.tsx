@@ -15,11 +15,12 @@ export class Hello extends React.Component<HelloProps, {}> {
     rawData: any = {};
 
     getFromDatabase() {
+        console.log("here");
         var database = (window as any).firebase.database();
-        // var pascal = "ewTfFegyOOcUkcmfsylXaRyzDYi1";
+        var pascal = "bEw3L72ZBMgrsMeix8bNGHec50L2";
         var leia = "5G58vqqWTsMcRJQ44sgnJjzV75E2";
-        var user = leia;
-        database.ref("/users/" + user + "/today").on('value', (snap: any) => {
+        var user = pascal;
+        database.ref("/user/" + user + "/records/2017-01-01").on('value', (snap: any) => {
             this.rawData = snap.val();
             this.renderD3();
         });
@@ -42,15 +43,15 @@ export class Hello extends React.Component<HelloProps, {}> {
         ];
 
         var labels: string[] = [];
-        for (var hostName in this.rawData.sites) {
-            var site = (this.rawData.sites as any)[hostName];
+        for (var hostName in this.rawData.site) {
+            var site = (this.rawData.site as any)[hostName];
             console.log(hostName, site);
             var total = 0;
             /*for (var pageName in site) {
                 var pageInfo = site[pageName];
                 total += pageInfo.timings.timed;
             }*/
-            data.push(site.timings.timed);
+            data.push(site.total);
             labels.push(hostName);
         }
         if (labels.length > 9) {

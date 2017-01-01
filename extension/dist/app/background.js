@@ -34,9 +34,9 @@ var __extends = (this && this.__extends) || function (d, b) {
     function __() { this.constructor = d; }
     d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
 };
+var AccessNames = ["unknown", "allowed", "timed", "forbidden", "forbidden"];
 var BackgroundApplication = (function () {
     function BackgroundApplication() {
-        this.sitesSettings = {};
         this.initComplete = false;
     }
     BackgroundApplication.prototype.run = function () {
@@ -48,9 +48,10 @@ var BackgroundApplication = (function () {
             defaultInstantReporting: false,
             defaultGranularity: 2 /* IndividualPage */,
             emails: "",
-            globalExceptions: {}
+            site: {},
+            url: {}
         };
-        app.settings = deepMerge(app.defaultSettings);
+        app.settings = deepMerge(app.defaultSettings, {});
         this.tabsMonitor = new TabsMonitor();
         this.iconManager = new IconManager();
         this.databaseManager = new DatabaseManager();
@@ -70,7 +71,7 @@ function deepMerge(object1, object2, overwrite) {
                 continue;
             var mergeValue = merge[prop];
             destination[prop] = (typeof mergeValue === "object")
-                ? recursiveMerge(destination[prop], mergeValue)
+                ? recursiveMerge(destination[prop] || {}, mergeValue)
                 : mergeValue;
         }
         return destination;
@@ -113,45 +114,7 @@ var HistoryManager = (function () {
     function HistoryManager() {
         this.nbMonthMax = 100;
         this.nbDayMax = 100;
-        this.LOCAL_MILLENIUM_DAY = new Date(2000, 0, 1).getTime();
     }
-    HistoryManager.prototype.increment = function (history, increment, newDateString) {
-        var result = {
-            lastDate: newDateString
-        };
-        if (!history)
-            history = {};
-        var lastDate = new Date(history.lastDate);
-        var newDate = new Date(newDateString);
-        result.monthly = this.incrementInArray(history.monthly, increment, lastDate.getFullYear() * 12 + lastDate.getMonth(), newDate.getFullYear() * 12 + newDate.getMonth(), this.nbMonthMax);
-        result.daily = this.incrementInArray(history.daily, increment, Math.floor((lastDate.getTime() - this.LOCAL_MILLENIUM_DAY) / 86400000), Math.floor((newDate.getTime() - this.LOCAL_MILLENIUM_DAY) / 86400000), this.nbDayMax);
-        return result;
-    };
-    HistoryManager.prototype.incrementInArray = function (array, increment, previousIndex, newIndex, max) {
-        array = array ? array.slice() : [];
-        if (array.length == 0)
-            array.push(0);
-        else {
-            if (!previousIndex)
-                previousIndex = 0;
-            var nbToAdd = newIndex - previousIndex;
-            if (nbToAdd > 0) {
-                if (nbToAdd >= max) {
-                    nbToAdd = max;
-                    array = [];
-                }
-                else if (nbToAdd + array.length > max) {
-                    array = array.slice(nbToAdd - max);
-                }
-                for (var i = 0; i < nbToAdd; i++)
-                    array.push(0);
-            }
-        }
-        array[array.length - 1] += increment;
-        return array;
-    };
-    HistoryManager.prototype.setSettings = function (emails) {
-    };
     return HistoryManager;
 }());
 var DatabaseManager = (function () {
@@ -178,6 +141,7 @@ var DatabaseManager = (function () {
         this.firebaseApp.auth().onAuthStateChanged(function (user) {
             if (user) {
                 _this.dbUid = user.uid;
+                _this.userRef = _this.database.ref("user").child(_this.dbUid);
                 console.log("Signed in firebase", user);
                 _this.afterSignin();
             }
@@ -244,51 +208,52 @@ var DatabaseManager = (function () {
         });
     };
     DatabaseManager.prototype.afterSignin = function () {
+        console.log("afterSignin");
         if (!this.tabsMonitorInitDone) {
             this.tabsMonitorInitDone = true;
             app.tabsMonitor.init();
         }
-        var gotAccountSettings = false;
-        var gotSites = false;
+        var gotSettings = false;
         var gotTodayData = false;
-        this.userRef = this.database.ref("users").child(this.dbUid);
+        var now = new Date();
         var checkTabs = function () {
-            if (!gotAccountSettings
-                || !gotTodayData
-                || !gotSites)
+            if (!gotSettings
+                || !gotTodayData)
                 return;
             app.initComplete = true;
-            app.tabsMonitor.checkAllTabs(CheckAllTabsReason.SettingsChanged);
+            app.tabsMonitor.checkAllTabs(CheckAllTabsReason.SettingsChanged, now);
+            //this.checkTodayData();
         };
         var onSettingsChanged = function (snap) {
-            var newSettings = snap.val();
+            var newSettings = snap.val() || {};
             app.settings = deepMerge(newSettings, app.defaultSettings);
             console.log("New account settings", app.settings);
-            gotAccountSettings = true;
+            gotSettings = true;
             checkTabs();
         };
         if (this.settingsRef)
             this.settingsRef.off("value", onSettingsChanged);
         this.settingsRef = this.userRef.child("settings");
         this.settingsRef.on("value", onSettingsChanged);
-        var onUserSitesChanged = function (snap) {
-            app.sitesSettings = snap.val() || {};
-            gotSites = true;
-            checkTabs();
-        };
-        if (this.userSitesRef)
-            this.settingsRef.off("value", onUserSitesChanged);
-        this.userSitesRef = this.userRef.child("sites");
-        this.userSitesRef.on("value", onUserSitesChanged);
-        var onDayHistoricsChanged = function (snap) {
-            app.todaysDataSnap = snap;
+        var onGotTodayData = function (snap) {
+            app.todayData = snap.val() || {};
             gotTodayData = true;
             checkTabs();
         };
-        if (this.userSitesRef)
-            this.settingsRef.off("value", onUserSitesChanged);
-        this.todaysRef = this.userRef.child("today");
-        this.todaysRef.on("value", onDayHistoricsChanged);
+        this.dateSignature = DatabaseManager.getHistoricSignature(now);
+        this.getTodayRef().once("value", onGotTodayData);
+    };
+    DatabaseManager.prototype.getDateSignature = function () {
+        return this.dateSignature;
+    };
+    DatabaseManager.prototype.setDateSignature = function (value) {
+        if (value == this.dateSignature)
+            return;
+        this.dateSignature = value;
+        app.todayData = {};
+    };
+    DatabaseManager.prototype.getTodayRef = function () {
+        return this.userRef.child("records").child(this.dateSignature);
     };
     DatabaseManager.reverseObject = function (src) {
         return Object.keys(src).reduce(function (out, val) {
@@ -347,9 +312,59 @@ var DatabaseManager = (function () {
             + DatabaseManager.twoDigits(d.getMonth() + 1) + "-"
             + DatabaseManager.twoDigits(d.getDate());
     };
+    DatabaseManager.getHistoricSignature = function (d) {
+        return d.getFullYear() + "-"
+            + DatabaseManager.twoDigits(d.getMonth() + 1) + "-"
+            + DatabaseManager.twoDigits(d.getDate());
+        // + " "
+        // + DatabaseManager.twoDigits(d.getHours()) + "-"
+        // + DatabaseManager.twoDigits(d.getMinutes())        
+    };
+    ;
     DatabaseManager.twoDigits = function (n) {
         return n >= 10 ? n.toString() : "0" + n;
     };
+    // private checkTodayData() {
+    //     console.log("CheckToday");
+    //     var nowString = DatabaseManager.shortDate(new Date());
+    //     var todayData: TodayData = app.todayDataSnap.val();
+    //     if (todayData.started == nowString) return;
+    //     // we stop everything
+    //     app.tabsMonitor.checkAllTabs(CheckAllTabsReason.NewDay);
+    //     var activatedDate = todayData.timings.activated;
+    //     var updates: any = {};
+    //     for (var hostname in todayData.sites) {
+    //         var site = todayData.sites[hostname];
+    //         var realHostName = DatabaseManager.unescapeKey(hostname);
+    //         var pages = site.pages;
+    //         for (var pageName in pages) {
+    //             var page = pages[pageName];
+    //         }
+    //         /*
+    //         var page = dailyRecord.pages[];
+    //         if (dailyRecord.startDate < today) {
+    //             // put this in history
+    //             var perSiteKey = ["accounts", app.options.accountId, "history", dailyRecord.hostname];
+    //             app.databaseManager.transaction(perSiteKey, (history: History) => {
+    //                 if (history == null || history.lastDate <= dailyRecord.startDate) {
+    //                     history = app.databaseManager.increment(history, dailyRecord.duration, dailyRecord.startDate);
+    //                 }
+    //                 app.databaseManager.set(["accounts", app.options.accountId, "today", dailyRecord.hostname], null);
+    //                 return history;
+    //             });
+    //         } else {
+    //             var site = app.siteManager.getSite(realHostName)
+    //             var access = (site && site.access)
+    //                 ? site.access : app.settings.defaultAccess;
+    //             if (access == Access.AllowedButTimed) {
+    //                 this.todayTotal += dailyRecord.duration;
+    //             }
+    //         }
+    //         */
+    //     }
+    //     updates["today"] = { started: nowString };
+    //     console.log("updates", updates);
+    // }
     DatabaseManager.escapeChars = {
         ".": "\u2024",
         "$": "\uFF04",
@@ -362,95 +377,80 @@ var DatabaseManager = (function () {
     return DatabaseManager;
 }());
 var TimedItem = (function () {
-    function TimedItem() {
-        this._groups = [];
+    function TimedItem(category, name) {
+        this.category = category;
+        this.name = name;
+        this._active = 0;
+        this._timingsPath = DatabaseManager.getKey([category, name]);
+        TimedItem.list[this._timingsPath] = this;
     }
-    TimedItem.prototype.isActive = function () {
-        return this._active;
+    TimedItem.get = function (category, name) {
+        var timingsPath = DatabaseManager.getKey([category, name]);
+        var result = TimedItem.list[timingsPath];
+        if (!result) {
+            result = new TimedItem(category, name);
+        }
+        return result;
     };
-    TimedItem.prototype.start = function (updates) {
-        var _this = this;
+    TimedItem.prototype.isActive = function () {
+        return this._active > 0;
+    };
+    TimedItem.prototype.start = function (updates, now) {
         if (!this._active) {
             if (!this._initialized) {
-                this.onInitializeGroups(updates);
-                var timingsPath = DatabaseManager.getKey(this.getTimingPath());
-                this._timings = app.todaysDataSnap.child(timingsPath).val() || {};
-                this._timingsPath = DatabaseManager.getKey(this.getTimingPath());
+                var category = app.todayData[this.category] || {};
+                this._timings = category[this.name] || {};
                 this._initialized = true;
             }
-            this._active = true;
-            this._activatedTime = new Date();
+            this._activatedTime = now;
             this._timings.activated = DatabaseManager.fullDate(this._activatedTime);
             updates[this._timingsPath] = this._timings;
-            this._groups.forEach(function (p) { return p.memberStarted(_this, updates); });
         }
+        this._active += 1;
     };
-    TimedItem.prototype.stop = function (updates) {
-        var _this = this;
+    TimedItem.prototype.stop = function (updates, now) {
         if (!this._active)
             return;
-        this._active = false;
-        if (!this._activatedTime)
-            return;
-        var duration = (new Date().getTime() - this._activatedTime.getTime()) / 1000;
-        delete this._timings.activated;
-        this._timings.timed = OneDec((this._timings.timed || 0) + duration);
-        updates[this._timingsPath] = this._timings;
-        this._groups.forEach(function (p) { return p.memberStopped(_this, updates); });
+        this._active -= 1;
+        if (!this._active) {
+            if (!this._activatedTime)
+                return;
+            var duration = (now.getTime() - this._activatedTime.getTime()) / 1000;
+            delete this._timings.activated;
+            this._timings.total = OneDec((this._timings.total || 0) + duration);
+            updates[this._timingsPath] = this._timings;
+        }
     };
-    TimedItem.prototype.getValue = function () {
+    TimedItem.prototype.getTotal = function (now) {
         if (!this._initialized)
             return 0;
-        var result = this._timings.timed || 0;
+        var result = this._timings.total || 0;
         if (this._activatedTime) {
-            var d = (new Date().getTime() - this._activatedTime.getTime()) / 1000;
+            var d = (now.getTime() - this._activatedTime.getTime()) / 1000;
             result += d;
         }
         return Math.round(result);
     };
-    TimedItem.prototype.joinGroup = function (group, updates) {
-        if (this._groups.indexOf(group) >= 0)
-            return;
-        this._groups.push(group);
-        if (this._active)
-            group.memberStarted(this, updates);
+    TimedItem.prototype.dispose = function () {
+        delete TimedItem.list[this._timingsPath];
     };
-    TimedItem.prototype.leaveGroup = function (group, updates) {
-        if (this._active)
-            group.memberStopped(this, updates);
-        this._groups = this._groups.filter(function (x) { return x !== group; });
+    TimedItem.resetToZero = function () {
+        for (var item in TimedItem.list) {
+            var timings = TimedItem.list[item]._timings;
+            if (timings)
+                delete timings.total;
+        }
     };
+    TimedItem.list = {};
     return TimedItem;
 }());
-var TimedGroup = (function (_super) {
-    __extends(TimedGroup, _super);
-    function TimedGroup(timingPath) {
-        _super.call(this);
-        this.timingPath = timingPath;
-        this._nbMembers = 0;
-    }
-    TimedGroup.prototype.memberStarted = function (child, updates) {
-        this._nbMembers += 1;
-        if (this._nbMembers > 0)
-            this.start(updates);
-    };
-    TimedGroup.prototype.memberStopped = function (child, updates) {
-        this._nbMembers -= 1;
-        if (this._nbMembers == 0)
-            this.stop(updates);
-    };
-    TimedGroup.prototype.getTimingPath = function () {
-        return this.timingPath;
-    };
-    TimedGroup.prototype.onInitializeGroups = function (updates) {
-    };
-    return TimedGroup;
-}(TimedItem));
-var MonitoredSite = (function () {
+var MonitoredSite = (function (_super) {
+    __extends(MonitoredSite, _super);
     function MonitoredSite(hostname) {
+        _super.call(this, "site", hostname);
         this.hostname = hostname;
         this.hostnameKey = DatabaseManager.escapeKey(hostname);
-        this.timeGroup = new TimedGroup(["sites", hostname, "timings"]);
+        this.accessTimedItem = TimedItem.get("access", AccessNames[this.access]);
     }
     MonitoredSite.get = function (hostname, title) {
         var result = MonitoredSite.list[hostname];
@@ -459,12 +459,9 @@ var MonitoredSite = (function () {
         }
         return result;
     };
-    MonitoredSite.prototype.getTiming = function () {
-        return this.timeGroup;
-    };
     Object.defineProperty(MonitoredSite.prototype, "historicGranularity", {
         get: function () {
-            var siteSettings = app.sitesSettings[this.hostnameKey] || {};
+            var siteSettings = app.settings.site[this.hostnameKey] || {};
             return siteSettings.historicGranularity || app.defaultSettings.defaultGranularity;
         },
         enumerable: true,
@@ -472,7 +469,7 @@ var MonitoredSite = (function () {
     });
     Object.defineProperty(MonitoredSite.prototype, "access", {
         get: function () {
-            var siteSettings = app.sitesSettings[this.hostnameKey] || {};
+            var siteSettings = app.settings.site[this.hostnameKey] || {};
             return siteSettings.access || app.defaultSettings.defaultAccess;
         },
         enumerable: true,
@@ -480,42 +477,69 @@ var MonitoredSite = (function () {
     });
     Object.defineProperty(MonitoredSite.prototype, "description", {
         get: function () {
-            var siteSettings = app.sitesSettings[this.hostnameKey] || {};
+            var siteSettings = app.settings.site[this.hostnameKey] || {};
             return siteSettings.description || "";
         },
         enumerable: true,
         configurable: true
     });
-    MonitoredSite.prototype.onInitializeGroups = function (updates) {
-    };
-    MonitoredSite.prototype.getSitesTotal = function () {
-        return this.timeGroup.getValue();
-    };
-    MonitoredSite.prototype.getSitesMax = function () {
+    MonitoredSite.prototype.getDailyMaximum = function () {
         return 3600;
     };
+    MonitoredSite.prototype.start = function (updates, now) {
+        _super.prototype.start.call(this, updates, now);
+        this.accessTimedItem.start(updates, now);
+    };
+    MonitoredSite.prototype.stop = function (updates, now) {
+        _super.prototype.stop.call(this, updates, now);
+        this.accessTimedItem.stop(updates, now);
+    };
+    MonitoredSite.prototype.dispose = function () {
+        _super.prototype.dispose.call(this);
+        delete MonitoredSite.list[this.hostname];
+    };
     MonitoredSite.list = {};
-    MonitoredSite.todayTimed = new TimedGroup(["timings", "todayTimed"]);
-    MonitoredSite.todayUntimed = new TimedGroup(["timings", "todayUntimed"]);
-    MonitoredSite.todayAudio = new TimedGroup(["timings", "todayAudio"]);
     return MonitoredSite;
-}());
+}(TimedItem));
 var MonitoredUrl = (function (_super) {
     __extends(MonitoredUrl, _super);
-    function MonitoredUrl(url) {
-        _super.call(this);
-        var realURL = new URL(url);
-        this.hostname = realURL.hostname.replace(/^www\./, '');
+    function MonitoredUrl(normalizedUrl) {
+        _super.call(this, "url", normalizedUrl);
+        var realURL = new URL("http://" + normalizedUrl);
+        this.hostname = realURL.hostname;
         this.path = realURL.pathname;
         this.query = realURL.search;
-        this.url = url;
+        this.url = normalizedUrl;
         this.tabIds = [];
         this.site = MonitoredSite.get(this.hostname);
     }
     MonitoredUrl.get = function (url, title) {
         var result = MonitoredUrl.list[url];
         if (!result) {
-            MonitoredUrl.list[url] = result = new MonitoredUrl(url);
+            var realURL = new URL(url);
+            var hostName = realURL.hostname.replace(/^www\./, "").toLowerCase();
+            var site = MonitoredSite.get(hostName);
+            var normalizedUrl;
+            switch (site.historicGranularity) {
+                case 1 /* Domain */:
+                    normalizedUrl = hostName;
+                    break;
+                case 3 /* QueryString */:
+                    normalizedUrl = hostName + realURL.pathname + realURL.search;
+                    break;
+                case 4 /* HashValues */:
+                    normalizedUrl = hostName + realURL.pathname + realURL.search + realURL.hash;
+                    break;
+                case 2 /* IndividualPage */:
+                default:
+                    normalizedUrl = hostName + realURL.pathname;
+                    break;
+            }
+            var result = MonitoredUrl.list[normalizedUrl];
+            if (!result) {
+                result = new MonitoredUrl(normalizedUrl);
+                MonitoredUrl.list[normalizedUrl] = result;
+            }
         }
         if (title)
             result.title = title;
@@ -523,15 +547,6 @@ var MonitoredUrl = (function (_super) {
     };
     MonitoredUrl.prototype.getAccess = function () {
         return this.site.access;
-    };
-    MonitoredUrl.prototype.onInitializeGroups = function (updates) {
-        this.joinGroup(this.site.getTiming(), updates);
-        if (this.getAccess() === 1 /* AllowedAndFree */) {
-            this.joinGroup(MonitoredSite.todayUntimed, updates);
-        }
-        else {
-            this.joinGroup(MonitoredSite.todayTimed, updates);
-        }
     };
     MonitoredUrl.prototype.getTimingPath = function () {
         return [
@@ -544,13 +559,6 @@ var MonitoredUrl = (function (_super) {
             this.title = newTitle;
         }
     };
-    // private getHostRef(): firebase.DatabaseReference {
-    //     var hostRef = app.databaseManager.todaysRef &&
-    //         app.databaseManager.todaysRef
-    //             .child("sites")
-    //             .child(DatabaseManager.escapeKey(this.hostname));
-    //     return hostRef;
-    // }
     MonitoredUrl.prototype.getPagePath = function () {
         var path;
         switch (this.site.historicGranularity || app.settings.defaultGranularity) {
@@ -570,54 +578,54 @@ var MonitoredUrl = (function (_super) {
         }
         return path;
     };
-    // private getVisitsRef(): firebase.DatabaseReference {
-    //     var path = this.getPagePath();
-    //     var visitsRef = this.getHostRef()
-    //         .child("pages")
-    //         .child(DatabaseManager.escapeKey(path))
-    //         .child("visits");
-    //     return visitsRef;
-    // }
-    MonitoredUrl.prototype.getLpcMessage = function (action) {
+    MonitoredUrl.prototype.getLpcMessage = function (action, now) {
         var access = app.settings.active ? this.site.access : 4 /* InstantClose */;
-        var todaysTotal = MonitoredSite.todayTimed.getValue(); //app.databaseManager.todaysTotal
-        var todaysMax = app.settings.dailyMaximum; //app.databaseManager.todaysTotal
-        var sitesTotal = this.site.getSitesTotal(); //todaysSite ? todaysSite.total :
-        var sitesMax = this.site.getSitesMax();
+        var todayTotal = TimedItem.get("access", "timed");
+        var todayMax = app.settings.dailyMaximum;
+        var siteTotal = this.site.getTotal(now);
+        var siteMax = this.site.getDailyMaximum();
         var message = {
             sender: "LPCBackground",
             message: this.site.description || "Leia Parental Control",
             access: access,
-            todaysTotal: todaysTotal,
-            todaysMax: todaysMax,
-            sitesTotal: sitesTotal,
-            sitesMax: sitesMax
+            todayTotal: todayTotal.getTotal(now),
+            todayMax: todayMax,
+            siteTotal: siteTotal,
+            siteMax: siteMax
         };
         return message;
     };
-    MonitoredUrl.prototype.sendLpcMessages = function (action) {
+    MonitoredUrl.prototype.sendLpcMessages = function (action, now) {
         if (!this.tabIds)
             return;
         for (var _i = 0, _a = this.tabIds; _i < _a.length; _i++) {
             var id = _a[_i];
-            this.sendLpcMessage(id, action);
+            this.sendLpcMessage(id, action, now);
         }
         ;
     };
-    MonitoredUrl.prototype.sendLpcMessage = function (tabId, action) {
-        var message = this.getLpcMessage(action);
+    MonitoredUrl.prototype.sendLpcMessage = function (tabId, action, now) {
+        var message = this.getLpcMessage(action, now);
         if (message.access == 4 /* InstantClose */) {
             chrome.tabs.remove(tabId);
         }
         else
             chrome.tabs.sendMessage(tabId, message);
     };
-    MonitoredUrl.prototype.dispose = function (updates) {
-        if (this.isActive()) {
-            debugger; // not normal
-            this.stop(updates);
-        }
+    MonitoredUrl.prototype.dispose = function () {
+        _super.prototype.dispose.call(this);
         delete MonitoredUrl.list[this.url];
+    };
+    MonitoredUrl.prototype.start = function (updates, now) {
+        _super.prototype.start.call(this, updates, now);
+        this.site.start(updates, now);
+    };
+    MonitoredUrl.prototype.stop = function (updates, now) {
+        _super.prototype.stop.call(this, updates, now);
+        this.site.stop(updates, now);
+    };
+    MonitoredUrl.prototype.getNormalizedUrl = function () {
+        return this.url;
     };
     MonitoredUrl.list = {};
     return MonitoredUrl;
@@ -643,16 +651,21 @@ var TabsMonitor = (function () {
                     var w = windows_1[_i];
                     _this.windows[w.id] = w;
                 }
-                _this.checkAllTabs(CheckAllTabsReason.TabChanged);
+                _this.checkAllTabs(CheckAllTabsReason.TabChanged, new Date());
             });
         });
     };
-    TabsMonitor.prototype.checkAllTabs = function (reason) {
+    TabsMonitor.prototype.checkAllTabs = function (reason, now) {
         var _this = this;
         if (!app.initComplete)
             return;
         chrome.tabs.query({}, function (tabs) {
-            var now = new Date();
+            var newDateSignature = DatabaseManager.getHistoricSignature(now);
+            if (newDateSignature != app.databaseManager.getDateSignature()) {
+                _this.postUpdates({}, {}, now);
+                app.databaseManager.setDateSignature(newDateSignature);
+                TimedItem.resetToZero();
+            }
             var nowTime = now.getTime();
             var tabIds = {};
             var activeTabs = {};
@@ -663,6 +676,7 @@ var TabsMonitor = (function () {
                     continue;
                 var url = tab.url || "";
                 var monitoredUrl = MonitoredUrl.get(url, tab.title);
+                url = monitoredUrl.getNormalizedUrl();
                 var window = _this.windows[tab.windowId];
                 var active = (tab.active && (!window || window.state !== "minimized"))
                     || tab.audible;
@@ -677,57 +691,60 @@ var TabsMonitor = (function () {
                 if (tab.active) {
                     newActiveTabsIds.push({ tabId: tab.id, monitoredUrl: monitoredUrl });
                     if (reason == CheckAllTabsReason.SettingsChanged) {
-                        monitoredUrl.sendLpcMessage(tab.id, 4 /* SettingsChanged */);
+                        monitoredUrl.sendLpcMessage(tab.id, 4 /* SettingsChanged */, now);
                     }
                 }
             }
             _this.activeTabsIds = newActiveTabsIds;
-            // It generate quite a bit of database noise to deactivate and reactivate a site
-            // It is better to activate new tabs and the deactivate old ones.
-            var updates = {};
-            // So: first activate
-            for (var url in MonitoredUrl.list) {
-                var monitoredUrl = MonitoredUrl.list[url];
-                if (monitoredUrl) {
-                    monitoredUrl.tabIds = tabIds[url];
-                    if (activeTabs[url] && !monitoredUrl.isActive()) {
-                        monitoredUrl.start(updates);
-                        monitoredUrl.sendLpcMessages(2 /* Activated */);
-                    }
-                }
-            }
-            // And then deactivate
-            for (var url in MonitoredUrl.list) {
-                var monitoredUrl = MonitoredUrl.list[url];
-                if (monitoredUrl && !activeTabs[url]) {
-                    if (monitoredUrl.isActive()) {
-                        monitoredUrl.stop(updates);
-                        monitoredUrl.sendLpcMessages(3 /* Deactivated */);
-                    }
-                    if (!tabIds[url]) {
-                        monitoredUrl.dispose(updates);
-                    }
-                }
-            }
-            if (Object.keys(updates).length > 0) {
-                console.log("Posting", updates);
-                app.databaseManager.todaysRef.update(updates);
-            }
+            _this.postUpdates(tabIds, activeTabs, now);
         });
+    };
+    TabsMonitor.prototype.postUpdates = function (tabIds, activeTabs, now) {
+        // It generate quite a bit of database noise to deactivate and reactivate a site
+        // It is better to activate new tabs and the deactivate old ones.
+        var updates = {};
+        // So: first activate
+        for (var url in MonitoredUrl.list) {
+            var monitoredUrl = MonitoredUrl.list[url];
+            if (monitoredUrl) {
+                monitoredUrl.tabIds = tabIds[url];
+                if (activeTabs[url] && !monitoredUrl.isActive()) {
+                    monitoredUrl.start(updates, now);
+                    monitoredUrl.sendLpcMessages(2 /* Activated */, now);
+                }
+            }
+        }
+        // And then deactivate
+        for (var url in MonitoredUrl.list) {
+            var monitoredUrl = MonitoredUrl.list[url];
+            if (monitoredUrl && !activeTabs[url]) {
+                if (monitoredUrl.isActive()) {
+                    monitoredUrl.stop(updates, now);
+                    monitoredUrl.sendLpcMessages(3 /* Deactivated */, now);
+                }
+                if (!tabIds[url]) {
+                    monitoredUrl.dispose();
+                }
+            }
+        }
+        if (Object.keys(updates).length > 0) {
+            console.log("Posting", app.databaseManager.getDateSignature(), updates);
+            app.databaseManager.getTodayRef().update(updates);
+        }
     };
     TabsMonitor.prototype.init = function () {
         var _this = this;
         chrome.tabs.onCreated.addListener(function (tab) {
-            _this.checkAllTabs(CheckAllTabsReason.TabChanged);
+            _this.checkAllTabs(CheckAllTabsReason.TabChanged, new Date());
         });
         chrome.tabs.onActivated.addListener(function (tabinfo) {
-            _this.checkAllTabs(CheckAllTabsReason.TabChanged);
+            _this.checkAllTabs(CheckAllTabsReason.TabChanged, new Date());
         });
         chrome.tabs.onUpdated.addListener(function (tabId) {
-            _this.checkAllTabs(CheckAllTabsReason.TabChanged);
+            _this.checkAllTabs(CheckAllTabsReason.TabChanged, new Date());
         });
         chrome.tabs.onRemoved.addListener(function (tabId) {
-            _this.checkAllTabs(CheckAllTabsReason.TabChanged);
+            _this.checkAllTabs(CheckAllTabsReason.TabChanged, new Date());
         });
         chrome.windows.onCreated.addListener(function (window) {
             _this.windows[window.id] = window;
@@ -741,17 +758,18 @@ var TabsMonitor = (function () {
     TabsMonitor.prototype.minuteClock = function () {
         var _this = this;
         this.minuteCounter++;
-        this.checkAllTabs(CheckAllTabsReason.MinuteTimer);
         var now = new Date();
+        this.checkAllTabs(CheckAllTabsReason.MinuteTimer, now);
         var secondsToNextMinute = (60 - now.getSeconds());
         setTimeout(function () {
             _this.minuteClock();
         }, secondsToNextMinute * 1000);
     };
     TabsMonitor.prototype.secondClock = function () {
+        var now = new Date();
         for (var _i = 0, _a = app.tabsMonitor.activeTabsIds; _i < _a.length; _i++) {
             var x = _a[_i];
-            x.monitoredUrl.sendLpcMessage(x.tabId, 5 /* MinuteTimer */);
+            x.monitoredUrl.sendLpcMessage(x.tabId, 5 /* MinuteTimer */, now);
         }
     };
     return TabsMonitor;
@@ -797,7 +815,7 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
         case "HELLO":
             if (sendResponse) {
                 var monitoredUrl = MonitoredUrl.get(message.url);
-                sendResponse(monitoredUrl.getLpcMessage(1 /* HelloResponse */));
+                sendResponse(monitoredUrl.getLpcMessage(1 /* HelloResponse */, new Date()));
             }
             break;
     }

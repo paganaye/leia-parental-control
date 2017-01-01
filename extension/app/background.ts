@@ -37,6 +37,7 @@ const enum Access {
     Forbidden = 3,
     InstantClose = 4
 }
+const AccessNames = ["unknown", "allowed", "timed", "forbidden", "forbidden"];
 
 const enum HistoricGranularity {
     Domain = 1,
@@ -45,40 +46,34 @@ const enum HistoricGranularity {
     HashValues = 4
 }
 
-interface AppSettings {
+
+type DatabaseUpdates = { [key: string]: any };
+
+interface UserSettings {
     defaultAccess: Access;
     defaultInstantReporting: boolean;
     dailyMaximum: number;
     active: boolean;
     defaultGranularity: HistoricGranularity;
     emails: string;
-    globalExceptions: { [key: string]: SiteException }
+
+    site: { [hostname: string]: SiteSetting };
+    url: { [hostname: string]: PageSetting }
+
+    blockedFrom?: string;
+    blockedTo?: string;
 }
 
-
-type SitesSettings = { [hostname: string]: SiteSetting };
-type DatabaseUpdates = { [key: string]: any };
-
 interface AggregateTimings {
-    timed: number;
+    total: number;
     activated?: string | null;
     error?: string;
 }
 
-interface DayHistorics {
-    timings: AggregateTimings;
-    sites: { [site: string]: SiteHistorics }
-}
+type TodayData = { [category: string]: CategoryData };
+type CategoryData = { [name: string]: AggregateTimings };
 
-interface SiteHistorics {
-    timings: AggregateTimings;
-    pages: { [path: string]: PageHistorics };
-}
 
-interface PageHistorics {
-    title: string;
-    timings: AggregateTimings;
-}
 
 interface ParsedUrl {
     protocol: string;
@@ -112,15 +107,17 @@ interface History {
     monthly: number[];
 }
 
-interface SiteSetting {
-    hostname: string;
+interface PageSetting {
     description: string;
-    historicGranularity: HistoricGranularity;
     access: Access;
     instantReporting: boolean;
     dailyMaximum?: number;
-    exceptions: { [key: string]: SiteException }
 }
+
+interface SiteSetting extends PageSetting {
+    historicGranularity: HistoricGranularity;
+}
+
 
 const enum LpcAction {
     NewTab,
@@ -135,10 +132,10 @@ interface LpcMessage {
     sender: "LPCBackground";
     access: Access;
     message: string;
-    todaysTotal: number;
-    todaysMax: number;
-    sitesTotal: number;
-    sitesMax: number;
+    todayTotal: number;
+    todayMax: number;
+    siteTotal: number;
+    siteMax: number;
 }
 
 class BackgroundApplication {
@@ -146,15 +143,13 @@ class BackgroundApplication {
     iconManager: IconManager;
     optionManager: OptionManager;
     databaseManager: DatabaseManager;
-    sitesSettings: SitesSettings = {};
-
     startupTime: string;
 
     counting: boolean;
     options: AppOptions;
-    defaultSettings: AppSettings;
-    settings: AppSettings;
-    todaysDataSnap: firebase.DataSnapshot;
+    defaultSettings: UserSettings;
+    settings: UserSettings;
+    todayData: TodayData;
     initComplete: boolean = false;
 
     run() {
@@ -167,10 +162,11 @@ class BackgroundApplication {
             defaultInstantReporting: false,
             defaultGranularity: HistoricGranularity.IndividualPage,
             emails: "",
-            globalExceptions: {}
+            site: {},
+            url: {}
         };
 
-        app.settings = deepMerge(app.defaultSettings);
+        app.settings = deepMerge(app.defaultSettings, {});
 
         this.tabsMonitor = new TabsMonitor();
         this.iconManager = new IconManager();
@@ -190,7 +186,7 @@ function deepMerge<T>(object1: T, object2?: any, overwrite?: boolean): T {
             if (destination.hasOwnProperty(prop) && !overwrite) continue;
             var mergeValue = merge[prop];
             destination[prop] = (typeof mergeValue === "object")
-                ? recursiveMerge(destination[prop], mergeValue)
+                ? recursiveMerge(destination[prop] || {}, mergeValue)
                 : mergeValue;
         }
         return destination;
@@ -230,57 +226,56 @@ class IconManager {
 class HistoryManager {
     nbMonthMax = 100;
     nbDayMax = 100;
-    LOCAL_MILLENIUM_DAY = new Date(2000, 0, 1).getTime();
+    //LOCAL_MILLENIUM_DAY = new Date(2000, 0, 1).getTime();
 
-    public increment(history: History, increment: number, newDateString: string): History {
-        var result = <History>{
-            lastDate: newDateString
-        };
-        if (!history) history = <History>{};
-        var lastDate = new Date(history.lastDate);
-        var newDate = new Date(newDateString)
-        result.monthly = this.incrementInArray(history.monthly,
-            increment,
-            lastDate.getFullYear() * 12 + lastDate.getMonth(),
-            newDate.getFullYear() * 12 + newDate.getMonth(),
-            this.nbMonthMax);
+    // public increment(history: History, increment: number, newDateString: string): History {
+    //     var result = <History>{
+    //         lastDate: newDateString
+    //     };
+    //     if (!history) history = <History>{};
+    //     var lastDate = new Date(history.lastDate);
+    //     var newDate = new Date(newDateString)
+    //     result.monthly = this.incrementInArray(history.monthly,
+    //         increment,
+    //         lastDate.getFullYear() * 12 + lastDate.getMonth(),
+    //         newDate.getFullYear() * 12 + newDate.getMonth(),
+    //         this.nbMonthMax);
 
-        result.daily = this.incrementInArray(history.daily,
-            increment,
-            Math.floor((lastDate.getTime() - this.LOCAL_MILLENIUM_DAY) / 86400000),
-            Math.floor((newDate.getTime() - this.LOCAL_MILLENIUM_DAY) / 86400000),
-            this.nbDayMax);
-        return result;
-    }
+    //     result.daily = this.incrementInArray(history.daily,
+    //         increment,
+    //         Math.floor((lastDate.getTime() - this.LOCAL_MILLENIUM_DAY) / 86400000),
+    //         Math.floor((newDate.getTime() - this.LOCAL_MILLENIUM_DAY) / 86400000),
+    //         this.nbDayMax);
+    //     return result;
+    // }
 
-    public incrementInArray(array: number[],
-        increment: number,
-        previousIndex: number,
-        newIndex: number,
-        max: number): number[] {
-        array = array ? array.slice() : [];
-        if (array.length == 0) array.push(0);
-        else {
-            if (!previousIndex) previousIndex = 0;
-            var nbToAdd = newIndex - previousIndex;
-            if (nbToAdd > 0) {
-                if (nbToAdd >= max) {
-                    nbToAdd = max;
-                    array = [];
-                }
-                else if (nbToAdd + array.length > max) {
-                    array = array.slice(nbToAdd - max)
-                }
-                for (var i = 0; i < nbToAdd; i++) array.push(0);
-            }
-        }
-        array[array.length - 1] += increment;
-        return array;
-    }
+    // public incrementInArray(array: number[],
+    //     increment: number,
+    //     previousIndex: number,
+    //     newIndex: number,
+    //     max: number): number[] {
+    //     array = array ? array.slice() : [];
+    //     if (array.length == 0) array.push(0);
+    //     else {
+    //         if (!previousIndex) previousIndex = 0;
+    //         var nbToAdd = newIndex - previousIndex;
+    //         if (nbToAdd > 0) {
+    //             if (nbToAdd >= max) {
+    //                 nbToAdd = max;
+    //                 array = [];
+    //             }
+    //             else if (nbToAdd + array.length > max) {
+    //                 array = array.slice(nbToAdd - max)
+    //             }
+    //             for (var i = 0; i < nbToAdd; i++) array.push(0);
+    //         }
+    //     }
+    //     array[array.length - 1] += increment;
+    //     return array;
+    // }
 
-    setSettings(emails: string[]) {
-
-    }
+    // setSettings(emails: string[]) {
+    //    }
 }
 
 class DatabaseManager {
@@ -292,8 +287,10 @@ class DatabaseManager {
     database: firebase.Database;
     userRef: firebase.DatabaseReference;
     settingsRef: firebase.DatabaseReference;
-    userSitesRef: firebase.DatabaseReference;
-    todaysRef: firebase.DatabaseReference;
+    //userSitesRef: firebase.DatabaseReference;
+    //userTodayRef: firebase.DatabaseReference;
+    //todayRef: firebase.DatabaseReference;
+    private dateSignature: string;
 
 
 
@@ -321,6 +318,7 @@ class DatabaseManager {
         this.firebaseApp.auth().onAuthStateChanged((user: any) => {
             if (user) {
                 this.dbUid = user.uid;
+                this.userRef = this.database.ref("user").child(this.dbUid);
                 console.log("Signed in firebase", user);
                 this.afterSignin();
             } else {
@@ -395,30 +393,28 @@ class DatabaseManager {
     tabsMonitorInitDone: boolean;
 
     afterSignin() {
+        console.log("afterSignin");
         if (!this.tabsMonitorInitDone) {
             this.tabsMonitorInitDone = true;
             app.tabsMonitor.init();
         }
-        var gotAccountSettings = false;
-        var gotSites = false;
+        var gotSettings = false;
         var gotTodayData = false;
-
-        this.userRef = this.database.ref("users").child(this.dbUid);
+        var now = new Date();
 
         var checkTabs = () => {
-            if (!gotAccountSettings
-                || !gotTodayData
-                || !gotSites) return;
+            if (!gotSettings
+                || !gotTodayData) return;
             app.initComplete = true;
-
-            app.tabsMonitor.checkAllTabs(CheckAllTabsReason.SettingsChanged);
+            app.tabsMonitor.checkAllTabs(CheckAllTabsReason.SettingsChanged, now);
+            //this.checkTodayData();
         }
 
         var onSettingsChanged = (snap: firebase.DataSnapshot) => {
-            var newSettings = snap.val();
-            app.settings = deepMerge<AppSettings>(newSettings, app.defaultSettings);
+            var newSettings: UserSettings = snap.val() || {};
+            app.settings = deepMerge(newSettings, app.defaultSettings);
             console.log("New account settings", app.settings);
-            gotAccountSettings = true;
+            gotSettings = true;
             checkTabs();
         };
 
@@ -426,28 +422,78 @@ class DatabaseManager {
         this.settingsRef = this.userRef.child("settings");
         this.settingsRef.on("value", onSettingsChanged);
 
-        var onUserSitesChanged = (snap: firebase.DataSnapshot) => {
-            app.sitesSettings = snap.val() || {};
-            gotSites = true;
-            checkTabs();
-        };
-
-        if (this.userSitesRef) this.settingsRef.off("value", onUserSitesChanged)
-        this.userSitesRef = this.userRef.child("sites");
-        this.userSitesRef.on("value", onUserSitesChanged);
-
-        var onDayHistoricsChanged = (snap: firebase.DataSnapshot) => {
-            app.todaysDataSnap = snap;
+        var onGotTodayData = (snap: firebase.DataSnapshot) => {
+            app.todayData = snap.val() || {};
             gotTodayData = true;
             checkTabs();
         }
 
-        if (this.userSitesRef) this.settingsRef.off("value", onUserSitesChanged)
-        this.todaysRef = this.userRef.child("today");
-        this.todaysRef.on("value", onDayHistoricsChanged);
-
+        this.dateSignature = DatabaseManager.getHistoricSignature(now)
+        this.getTodayRef().once("value", onGotTodayData);
     }
 
+    getDateSignature(): string {
+        return this.dateSignature;
+    }
+
+    setDateSignature(value: string) {
+        if (value == this.dateSignature) return;
+        this.dateSignature = value;
+
+        app.todayData = <TodayData>{};
+    }
+
+    getTodayRef() {
+        return this.userRef.child("records").child(this.dateSignature);
+    }
+
+    // private checkTodayData() {
+    //     console.log("CheckToday");
+    //     var nowString = DatabaseManager.shortDate(new Date());
+
+    //     var todayData: TodayData = app.todayDataSnap.val();
+    //     if (todayData.started == nowString) return;
+
+    //     // we stop everything
+    //     app.tabsMonitor.checkAllTabs(CheckAllTabsReason.NewDay);
+
+    //     var activatedDate = todayData.timings.activated;
+    //     var updates: any = {};
+
+    //     for (var hostname in todayData.sites) {
+    //         var site = todayData.sites[hostname];
+    //         var realHostName = DatabaseManager.unescapeKey(hostname);
+
+    //         var pages = site.pages;
+    //         for (var pageName in pages) {
+    //             var page = pages[pageName];
+
+    //         }
+    //         /*
+    //         var page = dailyRecord.pages[];
+    //         if (dailyRecord.startDate < today) {
+    //             // put this in history
+    //             var perSiteKey = ["accounts", app.options.accountId, "history", dailyRecord.hostname];
+    //             app.databaseManager.transaction(perSiteKey, (history: History) => {
+    //                 if (history == null || history.lastDate <= dailyRecord.startDate) {
+    //                     history = app.databaseManager.increment(history, dailyRecord.duration, dailyRecord.startDate);
+    //                 }
+    //                 app.databaseManager.set(["accounts", app.options.accountId, "today", dailyRecord.hostname], null);
+    //                 return history;
+    //             });
+    //         } else {
+    //             var site = app.siteManager.getSite(realHostName)
+    //             var access = (site && site.access)
+    //                 ? site.access : app.settings.defaultAccess;
+    //             if (access == Access.AllowedButTimed) {
+    //                 this.todayTotal += dailyRecord.duration;
+    //             }
+    //         }
+    //         */
+    //     }
+    //     updates["today"] = { started: nowString };
+    //     console.log("updates", updates);
+    // }
 
     private static escapeChars: { [key: string]: string } = {
         ".": "\u2024",
@@ -489,7 +535,7 @@ class DatabaseManager {
         return result.join("");
     }
 
-    static getKey(parts: any[]) {
+    static getKey(parts: any[]): string {
         var result = parts.map((p) => {
             switch (typeof (p)) {
                 case "object":
@@ -519,120 +565,100 @@ class DatabaseManager {
             + DatabaseManager.twoDigits(d.getDate());
     }
 
+    static getHistoricSignature(d: Date): string {
+        return d.getFullYear() + "-"
+            + DatabaseManager.twoDigits(d.getMonth() + 1) + "-"
+            + DatabaseManager.twoDigits(d.getDate());
+            // + " "
+            // + DatabaseManager.twoDigits(d.getHours()) + "-"
+            // + DatabaseManager.twoDigits(d.getMinutes())        
+    };
+
     static twoDigits(n: number): string {
         return n >= 10 ? n.toString() : "0" + n;
     }
-
-
-
 }
 
-abstract class TimedItem {
-    private _active: boolean;
+class TimedItem {
+    private _active: number = 0;
     private _activatedTime: Date;
-    private _groups: TimedGroup[] = [];
     private _initialized: boolean;
     private _timings: AggregateTimings;
     private _timingsPath: string;
 
-    constructor() {
+    public static list: { [path: string]: TimedItem } = {};
 
+    public static get(category: string, name: string) {
+        var timingsPath = DatabaseManager.getKey([category, name]);
+
+        var result = TimedItem.list[timingsPath];
+        if (!result) {
+            result = new TimedItem(category, name);
+        }
+        return result;
+    }
+
+    protected constructor(private category: string, private name: string) {
+        this._timingsPath = DatabaseManager.getKey([category, name]);
+        TimedItem.list[this._timingsPath] = this;
     }
 
     isActive(): boolean {
-        return this._active;
+        return this._active > 0;
     }
 
-    
-    public start(updates: DatabaseUpdates): void {
+
+    public start(updates: DatabaseUpdates, now: Date): void {
         if (!this._active) {
             if (!this._initialized) {
-                this.onInitializeGroups(updates);
-                var timingsPath = DatabaseManager.getKey(this.getTimingPath());
-                this._timings = app.todaysDataSnap.child(timingsPath).val() || {};
-                this._timingsPath = DatabaseManager.getKey(this.getTimingPath());
+                var category: CategoryData = app.todayData[this.category] || {};
+                this._timings = category[this.name] || {};
                 this._initialized = true;
             }
-            this._active = true;
-            this._activatedTime = new Date();
+            this._activatedTime = now;
             this._timings.activated = DatabaseManager.fullDate(this._activatedTime);
             updates[this._timingsPath] = this._timings;
-            this._groups.forEach(p => p.memberStarted(this, updates));
+        }
+        this._active += 1;
+    }
+
+    public stop(updates: DatabaseUpdates, now: Date): void {
+        if (!this._active) return;
+        this._active -= 1;
+        if (!this._active) {
+            if (!this._activatedTime) return;
+            var duration = (now.getTime() - this._activatedTime.getTime()) / 1000;
+            delete this._timings.activated;
+            this._timings.total = OneDec((this._timings.total || 0) + duration);
+            updates[this._timingsPath] = this._timings;
         }
     }
 
-    public stop(updates: DatabaseUpdates): void {        
-        if (!this._active) return;
-        this._active = false;
-        if (!this._activatedTime) return;
-        var duration = (new Date().getTime() - this._activatedTime.getTime()) / 1000;
-
-        delete this._timings.activated;
-        this._timings.timed = OneDec((this._timings.timed || 0) + duration);
-        updates[this._timingsPath] = this._timings;
-        this._groups.forEach(p => p.memberStopped(this, updates));
-    }
-
-    public getValue(): number {
+    public getTotal(now: Date): number {
         if (!this._initialized) return 0;
-        var result = this._timings.timed || 0;
+        var result = this._timings.total || 0;
         if (this._activatedTime) {
-            var d = (new Date().getTime() - this._activatedTime.getTime()) / 1000;
+            var d = (now.getTime() - this._activatedTime.getTime()) / 1000;
             result += d;
         }
         return Math.round(result);
     }
 
-    abstract getTimingPath(): any[];
-    abstract onInitializeGroups(updates: DatabaseUpdates): void;
-
-
-    protected joinGroup(group: TimedGroup, updates: DatabaseUpdates) {
-        if (this._groups.indexOf(group) >= 0) return;
-        this._groups.push(group);
-        if (this._active) group.memberStarted(this, updates);
+    public dispose(): void {
+        delete TimedItem.list[this._timingsPath];
     }
 
-    protected leaveGroup(group: TimedGroup, updates: DatabaseUpdates) {
-        if (this._active) group.memberStopped(this, updates)
-        this._groups = this._groups.filter(x => x !== group);
+    public static resetToZero(): void {
+        for (var item in TimedItem.list) {
+            var timings = TimedItem.list[item]._timings;
+            if (timings) delete timings.total;
+        }
     }
 }
 
-class TimedGroup extends TimedItem {
-    private _nbMembers: number = 0;
-    private name: string;
-
-    constructor(private timingPath: string[]) {
-        super();
-    }
-
-    public memberStarted(child: TimedItem, updates: DatabaseUpdates) {
-        this._nbMembers += 1;
-        if (this._nbMembers > 0) this.start(updates);
-    }
-
-    public memberStopped(child: TimedItem, updates: DatabaseUpdates) {
-        this._nbMembers -= 1;
-        if (this._nbMembers == 0) this.stop(updates);
-    }
-
-    getTimingPath(): any[] {
-        return this.timingPath;
-    }
-
-    onInitializeGroups(updates: DatabaseUpdates): void {
-    }
-
-}
-
-class MonitoredSite {
-    private hostnameKey: string
+class MonitoredSite extends TimedItem {
+    private hostnameKey: string;
     public static list: { [hostname: string]: MonitoredSite } = {};
-    public static todayTimed: TimedGroup = new TimedGroup(["timings", "todayTimed"]);
-    public static todayUntimed: TimedGroup = new TimedGroup(["timings", "todayUntimed"]);
-    public static todayAudio: TimedGroup = new TimedGroup(["timings", "todayAudio"]);
-    private timeGroup: TimedGroup;
 
     public static get(hostname: string, title?: string): MonitoredSite {
         var result = MonitoredSite.list[hostname];
@@ -643,37 +669,46 @@ class MonitoredSite {
     }
 
     private constructor(private hostname: string) {
+        super("site", hostname);
         this.hostnameKey = DatabaseManager.escapeKey(hostname);
-        this.timeGroup = new TimedGroup(["sites", hostname, "timings"])
+        this.accessTimedItem = TimedItem.get("access", AccessNames[this.access]);
     }
 
-    public getTiming(): TimedGroup {
-        return this.timeGroup;
-    }
 
     public get historicGranularity(): HistoricGranularity {
-        var siteSettings = app.sitesSettings[this.hostnameKey] || {};
+        var siteSettings = app.settings.site[this.hostnameKey] || {};
         return siteSettings.historicGranularity || app.defaultSettings.defaultGranularity;
     }
 
     public get access(): Access {
-        var siteSettings = app.sitesSettings[this.hostnameKey] || {};
+        var siteSettings = app.settings.site[this.hostnameKey] || {};
         return siteSettings.access || app.defaultSettings.defaultAccess;
     }
 
     public get description(): string {
-        var siteSettings = app.sitesSettings[this.hostnameKey] || {};
+        var siteSettings = app.settings.site[this.hostnameKey] || {};
         return siteSettings.description || "";
     }
 
-    onInitializeGroups(updates: DatabaseUpdates): void {
+    getDailyMaximum(): number {
+        return 3600;
     }
 
-    getSitesTotal(): number {
-        return this.timeGroup.getValue();
+    accessTimedItem: TimedItem;
+
+    start(updates: DatabaseUpdates, now: Date): void {
+        super.start(updates, now);
+        this.accessTimedItem.start(updates, now);
     }
-    getSitesMax(): number {
-        return 3600;
+
+    stop(updates: DatabaseUpdates, now: Date): void {
+        super.stop(updates, now);
+        this.accessTimedItem.stop(updates, now);
+    }
+
+    public dispose(): void {
+        super.dispose();
+        delete MonitoredSite.list[this.hostname];
     }
 }
 
@@ -698,37 +733,49 @@ class MonitoredUrl extends TimedItem {
     public static get(url: string, title?: string): MonitoredUrl {
         var result = MonitoredUrl.list[url];
         if (!result) {
-            MonitoredUrl.list[url] = result = new MonitoredUrl(url);
+            var realURL = new URL(url);
+            var hostName = realURL.hostname.replace(/^www\./, "").toLowerCase();
+            var site = MonitoredSite.get(hostName);
+            var normalizedUrl: string;
+            switch (site.historicGranularity) {
+                case HistoricGranularity.Domain:
+                    normalizedUrl = hostName;
+                    break;
+                case HistoricGranularity.QueryString:
+                    normalizedUrl = hostName + realURL.pathname + realURL.search;
+                    break;
+                case HistoricGranularity.HashValues:
+                    normalizedUrl = hostName + realURL.pathname + realURL.search + realURL.hash;
+                    break;
+                case HistoricGranularity.IndividualPage:
+                default:
+                    normalizedUrl = hostName + realURL.pathname;
+                    break;
+            }
+            var result = MonitoredUrl.list[normalizedUrl];
+            if (!result) {
+                result = new MonitoredUrl(normalizedUrl);
+                MonitoredUrl.list[normalizedUrl] = result;
+            }
         }
         if (title) result.title = title;
         return result;
     }
 
-
-    private constructor(url: string) {
-        super();
-        var realURL = new URL(url);
-        this.hostname = realURL.hostname.replace(/^www\./, '');
+    private constructor(normalizedUrl: string) {
+        super("url", normalizedUrl);
+        var realURL = new URL("http://" + normalizedUrl);
+        this.hostname = realURL.hostname;
         this.path = realURL.pathname;
         this.query = realURL.search;
 
-        this.url = url;
+        this.url = normalizedUrl;
         this.tabIds = [];
         this.site = MonitoredSite.get(this.hostname);
     }
 
     getAccess(): Access {
         return this.site.access;
-    }
-
-    onInitializeGroups(updates: DatabaseUpdates): void {
-        this.joinGroup(this.site.getTiming(), updates);
-        if (this.getAccess() === Access.AllowedAndFree) {
-            this.joinGroup(MonitoredSite.todayUntimed, updates);
-        }
-        else {
-            this.joinGroup(MonitoredSite.todayTimed, updates);
-        }
     }
 
     getTimingPath(): any[] {
@@ -743,14 +790,6 @@ class MonitoredUrl extends TimedItem {
             this.title = newTitle;
         }
     }
-
-    // private getHostRef(): firebase.DatabaseReference {
-    //     var hostRef = app.databaseManager.todaysRef &&
-    //         app.databaseManager.todaysRef
-    //             .child("sites")
-    //             .child(DatabaseManager.escapeKey(this.hostname));
-    //     return hostRef;
-    // }
 
     private getPagePath(): string {
         var path: string;
@@ -773,59 +812,60 @@ class MonitoredUrl extends TimedItem {
         return path;
     }
 
-    // private getVisitsRef(): firebase.DatabaseReference {
-    //     var path = this.getPagePath();
-    //     var visitsRef = this.getHostRef()
-    //         .child("pages")
-    //         .child(DatabaseManager.escapeKey(path))
-    //         .child("visits");
-    //     return visitsRef;
-    // }
-
-    getLpcMessage(action: LpcAction): LpcMessage {
+    getLpcMessage(action: LpcAction, now: Date): LpcMessage {
         var access = app.settings.active ? this.site.access : Access.InstantClose;
 
-        var todaysTotal = MonitoredSite.todayTimed.getValue(); //app.databaseManager.todaysTotal
-        var todaysMax = app.settings.dailyMaximum; //app.databaseManager.todaysTotal
-        var sitesTotal = this.site.getSitesTotal(); //todaysSite ? todaysSite.total :
-        var sitesMax = this.site.getSitesMax();
+        var todayTotal = TimedItem.get("access", "timed");
+        var todayMax = app.settings.dailyMaximum;
+        var siteTotal = this.site.getTotal(now);
+        var siteMax = this.site.getDailyMaximum();
 
         var message: LpcMessage = {
             sender: "LPCBackground",
             message: this.site.description || "Leia Parental Control",
             access: access,
-            todaysTotal: todaysTotal,
-            todaysMax: todaysMax,
-            sitesTotal: sitesTotal,
-            sitesMax: sitesMax
+            todayTotal: todayTotal.getTotal(now),
+            todayMax: todayMax,
+            siteTotal: siteTotal,
+            siteMax: siteMax
 
         };
         return message;
     }
 
-    sendLpcMessages(action: LpcAction) {
+    sendLpcMessages(action: LpcAction, now: Date) {
         if (!this.tabIds) return;
         for (var id of this.tabIds) {
-            this.sendLpcMessage(id, action);
+            this.sendLpcMessage(id, action, now);
         };
     }
 
-    sendLpcMessage(tabId: number, action: LpcAction): void {
-        var message = this.getLpcMessage(action);
+    sendLpcMessage(tabId: number, action: LpcAction, now: Date): void {
+        var message = this.getLpcMessage(action, now);
         if (message.access == Access.InstantClose) {
             chrome.tabs.remove(tabId);
         }
         else chrome.tabs.sendMessage(tabId, message);
     }
 
-    public dispose(updates: DatabaseUpdates): void {
-        if (this.isActive()) {
-            debugger; // not normal
-            this.stop(updates);
-        }
+    public dispose(): void {
+        super.dispose();
         delete MonitoredUrl.list[this.url];
     }
 
+    start(updates: DatabaseUpdates, now: Date): void {
+        super.start(updates, now);
+        this.site.start(updates, now);
+    }
+
+    stop(updates: DatabaseUpdates, now: Date): void {
+        super.stop(updates, now);
+        this.site.stop(updates, now);
+    }
+
+    getNormalizedUrl(): string {
+        return this.url;
+    }
 }
 
 enum CheckAllTabsReason {
@@ -845,25 +885,35 @@ class TabsMonitor {
                 for (var w of windows) {
                     this.windows[w.id] = w;
                 }
-                this.checkAllTabs(CheckAllTabsReason.TabChanged);
+                this.checkAllTabs(CheckAllTabsReason.TabChanged, new Date());
             });
         });
     }
 
-    checkAllTabs(reason: CheckAllTabsReason): void {
+
+    checkAllTabs(reason: CheckAllTabsReason, now: Date): void {
         if (!app.initComplete) return;
 
         chrome.tabs.query({}, (tabs) => {
-            var now = new Date();
+            var newDateSignature = DatabaseManager.getHistoricSignature(now);
+
+            if (newDateSignature != app.databaseManager.getDateSignature()) {
+                this.postUpdates({}, {}, now);
+                app.databaseManager.setDateSignature(newDateSignature);
+                TimedItem.resetToZero();
+            }
+
             var nowTime: number = now.getTime();
             var tabIds: { [url: string]: number[] } = {};
             var activeTabs: { [url: string]: boolean } = {};
             var newActiveTabsIds: TabIdAndMonitoredUrl[] = [];
 
+
             for (var tab of tabs) {
                 if (!tab.id || !tab.url) continue;
                 var url = tab.url || "";
                 var monitoredUrl = MonitoredUrl.get(url, tab.title);
+                url = monitoredUrl.getNormalizedUrl();
                 var window = this.windows[tab.windowId];
                 var active = (tab.active && (!window || window.state !== "minimized"))
                     || tab.audible;
@@ -877,58 +927,62 @@ class TabsMonitor {
                 if (tab.active) {
                     newActiveTabsIds.push({ tabId: tab.id, monitoredUrl: monitoredUrl });
                     if (reason == CheckAllTabsReason.SettingsChanged) {
-                        monitoredUrl.sendLpcMessage(tab.id, LpcAction.SettingsChanged);
+                        monitoredUrl.sendLpcMessage(tab.id, LpcAction.SettingsChanged, now);
                     }
                 }
             }
             this.activeTabsIds = newActiveTabsIds;
-            // It generate quite a bit of database noise to deactivate and reactivate a site
-            // It is better to activate new tabs and the deactivate old ones.
-            var updates: DatabaseUpdates = {};
-            // So: first activate
-            for (var url in MonitoredUrl.list) {
-                var monitoredUrl = MonitoredUrl.list[url];
-                if (monitoredUrl) {
-                    monitoredUrl.tabIds = tabIds[url];
-                    if (activeTabs[url] && !monitoredUrl.isActive()) {
-                        monitoredUrl.start(updates);
-                        monitoredUrl.sendLpcMessages(LpcAction.Activated);
-                    }
-                }
-            }
-            // And then deactivate
-            for (var url in MonitoredUrl.list) {
-                var monitoredUrl = MonitoredUrl.list[url];
-                if (monitoredUrl && !activeTabs[url]) {
-                    if (monitoredUrl.isActive()) {
-                        monitoredUrl.stop(updates);
-                        monitoredUrl.sendLpcMessages(LpcAction.Deactivated);
-                    }
-                    if (!tabIds[url]) {
-                        monitoredUrl.dispose(updates);
-                    }
-                }
-            }
-            if (Object.keys(updates).length > 0) {
-                console.log("Posting", updates);
-                app.databaseManager.todaysRef.update(updates);
-            }
 
+            this.postUpdates(tabIds, activeTabs, now);
         });
+    }
+
+    postUpdates(tabIds: { [url: string]: number[] }, activeTabs: { [url: string]: boolean }, now: Date) {
+        // It generate quite a bit of database noise to deactivate and reactivate a site
+        // It is better to activate new tabs and the deactivate old ones.
+        var updates: DatabaseUpdates = {};
+        // So: first activate
+        for (var url in MonitoredUrl.list) {
+            var monitoredUrl = MonitoredUrl.list[url];
+            if (monitoredUrl) {
+                monitoredUrl.tabIds = tabIds[url];
+                if (activeTabs[url] && !monitoredUrl.isActive()) {
+                    monitoredUrl.start(updates, now);
+                    monitoredUrl.sendLpcMessages(LpcAction.Activated, now);
+                }
+            }
+        }
+        // And then deactivate
+        for (var url in MonitoredUrl.list) {
+            var monitoredUrl = MonitoredUrl.list[url];
+            if (monitoredUrl && !activeTabs[url]) {
+                if (monitoredUrl.isActive()) {
+                    monitoredUrl.stop(updates, now);
+                    monitoredUrl.sendLpcMessages(LpcAction.Deactivated, now);
+                }
+                if (!tabIds[url]) {
+                    monitoredUrl.dispose();
+                }
+            }
+        }
+        if (Object.keys(updates).length > 0) {
+            console.log("Posting", app.databaseManager.getDateSignature(), updates);
+            app.databaseManager.getTodayRef().update(updates);
+        }
     }
 
     init() {
         chrome.tabs.onCreated.addListener((tab) => {
-            this.checkAllTabs(CheckAllTabsReason.TabChanged);
+            this.checkAllTabs(CheckAllTabsReason.TabChanged, new Date());
         });
         chrome.tabs.onActivated.addListener((tabinfo) => {
-            this.checkAllTabs(CheckAllTabsReason.TabChanged);
+            this.checkAllTabs(CheckAllTabsReason.TabChanged, new Date());
         });
         chrome.tabs.onUpdated.addListener((tabId) => {
-            this.checkAllTabs(CheckAllTabsReason.TabChanged);
+            this.checkAllTabs(CheckAllTabsReason.TabChanged, new Date());
         });
         chrome.tabs.onRemoved.addListener((tabId) => {
-            this.checkAllTabs(CheckAllTabsReason.TabChanged);
+            this.checkAllTabs(CheckAllTabsReason.TabChanged, new Date());
         });
 
         chrome.windows.onCreated.addListener((window) => {
@@ -947,18 +1001,20 @@ class TabsMonitor {
 
     minuteClock() {
         this.minuteCounter++;
-        this.checkAllTabs(CheckAllTabsReason.MinuteTimer);
 
         var now = new Date();
+        this.checkAllTabs(CheckAllTabsReason.MinuteTimer, now);
         var secondsToNextMinute = (60 - now.getSeconds());
+
         setTimeout(() => {
             this.minuteClock();
         }, secondsToNextMinute * 1000);
     }
 
     secondClock() {
+        var now = new Date();
         for (var x of app.tabsMonitor.activeTabsIds) {
-            x.monitoredUrl.sendLpcMessage(x.tabId, LpcAction.MinuteTimer);
+            x.monitoredUrl.sendLpcMessage(x.tabId, LpcAction.MinuteTimer, now);
         }
     }
 
@@ -1009,7 +1065,7 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
         case "HELLO":
             if (sendResponse) {
                 var monitoredUrl = MonitoredUrl.get(message.url);
-                sendResponse(monitoredUrl.getLpcMessage(LpcAction.HelloResponse));
+                sendResponse(monitoredUrl.getLpcMessage(LpcAction.HelloResponse, new Date()));
             }
             break;
     }
