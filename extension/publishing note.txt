@@ -1,0 +1,10 @@
+Leia Parental Control is a parental control system for children.
+
+I use this for my own child and it is working well for my own needs.
+It is however a work in progress and is not ready for public consumption.
+
+If you are a Javascript programmer feel free to improve it to your own requirements.
+The whole source of the application is here : https://github.com/paganaye/leia-parental-control
+
+I am happy to reply to questions.
+Pascal GANAYE
